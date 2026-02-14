@@ -512,7 +512,8 @@ def search_fts_phase5(
     """Full-text search over memory_card_fts.
 
     Returns list of (memory_id, normalised_fts_score) sorted by relevance.
-    Score is normalised via  1 / (1 + abs(bm25_rank))  → (0, 1].
+    FTS5's bm25 rank is negative and more negative means a better match, so
+    the score is  |rank| / (1 + |rank|), which maps stronger matches closer to 1.
     """
     fts_query = _sanitise_fts_query(query)
     if not fts_query:
@@ -566,7 +567,7 @@ def search_fts_phase5(
         results: list[tuple[str, float]] = []
         for r in rows:
             raw = abs(float(r["raw_score"])) if r["raw_score"] else 0.0
-            norm = 1.0 / (1.0 + raw)
+            norm = raw / (1.0 + raw)
             results.append((r["memory_id"], norm))
         return results
     except Exception:
