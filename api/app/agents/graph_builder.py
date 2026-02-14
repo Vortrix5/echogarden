@@ -1,4 +1,4 @@
-"""GraphBuilderAgent — deterministic entity extraction for property graph."""
+"""GraphBuilderAgent — structured entity extraction for property graph."""
 
 from __future__ import annotations
 
@@ -22,20 +22,63 @@ _STOPWORDS = frozenset({
     "TWO", "NEW", "OLD", "SEE", "WAY", "USE", "HER", "HIS", "ALSO",
 })
 
+# Multi-word capitalized phrase pattern
+_PHRASE_RE = re.compile(r"\b(?:[A-Z][A-Za-z]+(?:\s+[A-Z][A-Za-z]+)+)\b")
 _WORD_RE = re.compile(r"\b[A-Z][A-Za-z]{2,}\b")
 
+# Simple patterns for structured extraction
+_EMAIL_RE = re.compile(r"\b[\w.+-]+@[\w-]+\.[\w.-]+\b")
+_URL_RE = re.compile(r"https?://[^\s<>\"']+")
+_DATE_RE = re.compile(
+    r"\b\d{4}[-/]\d{1,2}[-/]\d{1,2}\b"
+    r"|\b(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\w*\s+\d{1,2},?\s*\d{4}\b",
+    re.IGNORECASE,
+)
 
-def _extract_entities(text: str) -> list[str]:
-    """Return sorted unique capitalised tokens (>=3 chars) not in stopwords."""
-    tokens = _WORD_RE.findall(text)
+
+def _extract_entities(text: str) -> list[dict]:
+    """Extract structured entities from text."""
+    entities: list[dict] = []
     seen: set[str] = set()
-    result: list[str] = []
-    for t in tokens:
-        key = t.upper()
+
+    # Multi-word phrases (higher confidence)
+    for match in _PHRASE_RE.finditer(text):
+        phrase = match.group()
+        key = phrase.upper()
+        if key not in seen and all(w.upper() not in _STOPWORDS for w in phrase.split()):
+            seen.add(key)
+            entities.append({"label": phrase, "entity_type": "Phrase", "confidence": 0.6})
+
+    # Single capitalized words
+    for match in _WORD_RE.finditer(text):
+        word = match.group()
+        key = word.upper()
         if key not in _STOPWORDS and key not in seen:
             seen.add(key)
-            result.append(t)
-    return sorted(result)
+            entities.append({"label": word, "entity_type": "Entity", "confidence": 0.3})
+
+    # URLs
+    for match in _URL_RE.finditer(text):
+        url = match.group()
+        if url not in seen:
+            seen.add(url)
+            entities.append({"label": url, "entity_type": "URL", "confidence": 0.9})
+
+    # Emails
+    for match in _EMAIL_RE.finditer(text):
+        email = match.group()
+        if email not in seen:
+            seen.add(email)
+            entities.append({"label": email, "entity_type": "Email", "confidence": 0.9})
+
+    # Dates
+    for match in _DATE_RE.finditer(text):
+        date_str = match.group()
+        if date_str not in seen:
+            seen.add(date_str)
+            entities.append({"label": date_str, "entity_type": "Date", "confidence": 0.7})
+
+    return entities
 
 
 class GraphBuilderAgent(BasePassiveAgent):
@@ -53,11 +96,15 @@ class GraphBuilderAgent(BasePassiveAgent):
         edges: list[dict] = []
 
         for ent in entities:
-            ent_id = f"ent:{ent.lower()}"
+            label = ent["label"]
+            ent_type = ent["entity_type"]
+            confidence = ent["confidence"]
+            ent_id = f"ent:{label.lower().replace(' ', '_')}"
+
             nodes.append({
                 "node_id": ent_id,
-                "node_type": "Entity",
-                "props": {"label": ent},
+                "node_type": ent_type,
+                "props": {"label": label, "entity_type": ent_type},
             })
             if memory_id:
                 mem_node_id = f"mem:{memory_id}"
@@ -65,11 +112,11 @@ class GraphBuilderAgent(BasePassiveAgent):
                     "from_node_id": mem_node_id,
                     "to_node_id": ent_id,
                     "edge_type": "MENTIONS",
-                    "weight": 1.0,
+                    "weight": confidence,
                     "provenance": {
                         "created_by": "GraphBuilderAgent",
                         "tool_call_id": call_id,
-                        "confidence": 0.3,
+                        "confidence": confidence,
                         "migrated": False,
                     },
                 })
@@ -80,7 +127,7 @@ class GraphBuilderAgent(BasePassiveAgent):
 registry.register(
     name="graph_builder",
     version="0.1.0",
-    description="Build knowledge-graph nodes and edges from content (stub).",
+    description="Build knowledge-graph nodes and edges from content text (structured extraction).",
     input_schema={"type": "object", "properties": {"content_text": {"type": "string"}}},
     output_schema={
         "type": "object",
