@@ -3,7 +3,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 
 from app.db.migrate import run_migration
-from app.routers import cards, chat, health, ingest, tools
+from app.routers import cards, chat, graph, health, ingest, tools
 
 # Import agents so they self-register with the tool registry on startup.
 import app.agents.doc_parse  # noqa: F401
@@ -31,3 +31,4 @@ app.include_router(cards.router)
 app.include_router(tools.router)
 app.include_router(ingest.router)
 app.include_router(chat.router)
+app.include_router(graph.router)
