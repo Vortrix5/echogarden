@@ -25,6 +25,47 @@ curl http://127.0.0.1:8000/cards
 open http://127.0.0.1:8000/docs
 ```
 
+## Phase 1 — Tool Registry & Passive Core-Agents
+
+### List registered tools
+
+```bash
+curl http://127.0.0.1:8000/tools
+```
+
+### Get a tool's schema
+
+```bash
+curl http://127.0.0.1:8000/tools/retrieval/schema
+```
+
+### Run the retrieval tool directly
+
+```bash
+curl -X POST http://127.0.0.1:8000/tools/retrieval/run \
+  -H "Content-Type: application/json" \
+  -d '{
+    "callee": "retrieval",
+    "inputs": {"query": "hello", "limit": 5}
+  }'
+```
+
+### Ingest text (creates a memory card)
+
+```bash
+curl -X POST http://127.0.0.1:8000/ingest \
+  -H "Content-Type: application/json" \
+  -d '{"text": "EchoGarden is a local-first knowledge garden that helps you remember everything."}'
+```
+
+### Chat (retrieval + weaver + verifier)
+
+```bash
+curl -X POST http://127.0.0.1:8000/chat \
+  -H "Content-Type: application/json" \
+  -d '{"user_text": "What is EchoGarden?"}'
+```
+
 ## Services
 
 | Service | URL | Description |
@@ -62,13 +103,30 @@ docker compose up --build
 │   └── app/
 │       ├── main.py
 │       ├── core/
-│       │   └── config.py
+│       │   ├── config.py
+│       │   ├── tool_contracts.py
+│       │   └── tool_registry.py
 │       ├── db/
 │       │   ├── schema.sql
 │       │   ├── migrate.py
-│       │   └── conn.py
+│       │   ├── conn.py
+│       │   └── repo.py
+│       ├── agents/
+│       │   ├── base.py
+│       │   ├── doc_parse.py
+│       │   ├── ocr.py
+│       │   ├── asr.py
+│       │   ├── vision_embed.py
+│       │   ├── text_embed.py
+│       │   ├── retrieval.py
+│       │   ├── graph_builder.py
+│       │   ├── weaver.py
+│       │   └── verifier.py
 │       └── routers/
 │           ├── health.py
-│           └── cards.py
+│           ├── cards.py
+│           ├── tools.py
+│           ├── ingest.py
+│           └── chat.py
 └── data/               (created at runtime, git-ignored)
 ```
