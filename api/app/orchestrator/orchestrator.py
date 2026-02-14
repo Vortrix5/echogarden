@@ -201,6 +201,13 @@ class Orchestrator:
         # Commit memory card
         memory_id = _new_id()
         summary = (extracted_text or "")[:500]
+
+        # Get text embedding vector_ref if available
+        text_vector_ref = ""
+        for sr in step_results:
+            if sr.tool_name == "text_embed" and sr.status == "ok":
+                text_vector_ref = sr.outputs.get("vector_ref", "")
+
         metadata = {
             "blob_id": blob_id,
             "source_id": source_id,
@@ -209,6 +216,8 @@ class Orchestrator:
             "size_bytes": size_bytes,
             "trace_id": trace_id,
             "pipeline": pipeline.value,
+            "content_text": (extracted_text or "")[:5000],
+            "text_vector_ref": text_vector_ref or None,
         }
         db_repo.insert_memory_card(
             memory_id=memory_id,
@@ -216,6 +225,11 @@ class Orchestrator:
             summary=summary,
             metadata=metadata,
         )
+
+        # Persist EMBEDDING row for text modality
+        if text_vector_ref:
+            db_repo.insert_embedding(memory_id, modality="text", vector_ref=text_vector_ref)
+
         logger.info(
             "[ORCH]   trace=%s — memory_card=%s created",
             trace_id[:12], memory_id[:12],
@@ -308,7 +322,7 @@ class Orchestrator:
                 tool_name="vision_embed",
                 intent="ingest.vision_embed",
                 inputs={"image_path": path, "blob_id": blob_id, "mime": mime},
-                timeout_ms=15000,
+                timeout_ms=300000,
                 prev_exec_node_id=None,  # root-level, no predecessor
             )
 
@@ -344,7 +358,7 @@ class Orchestrator:
                 tool_name="text_embed",
                 intent="ingest.embed",
                 inputs={"text": ocr_text},
-                timeout_ms=10000,
+                timeout_ms=120000,
                 prev_exec_node_id=sr_ocr.exec_node_id,  # depends on OCR
             )
             step_results.append(sr_text_embed)
@@ -391,7 +405,7 @@ class Orchestrator:
             "size_bytes": size_bytes,
             "trace_id": trace_id,
             "pipeline": "ocr",
-            "ocr_text": ocr_text[:1000] if ocr_text else None,
+            "content_text": ocr_text[:5000] if ocr_text else None,
             "ocr_status": sr_ocr.status,
             "vision_vector_ref": vision_vector_ref or None,
             "vision_status": sr_vision.status,
@@ -407,6 +421,12 @@ class Orchestrator:
             "[ORCH]   trace=%s — memory_card=%s created (ocr=%s, vision=%s)",
             trace_id[:12], memory_id[:12], sr_ocr.status, sr_vision.status,
         )
+
+        # Persist EMBEDDING rows for each modality
+        if text_vector_ref:
+            db_repo.insert_embedding(memory_id, modality="text", vector_ref=text_vector_ref)
+        if vision_vector_ref:
+            db_repo.insert_embedding(memory_id, modality="vision", vector_ref=vision_vector_ref)
 
         # Best-effort graph upsert
         try:

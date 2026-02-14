@@ -1,6 +1,4 @@
-"""TextEmbedAgent — stub that returns a deterministic vector reference."""
-
-import hashlib
+"""TextEmbedAgent — generates text embeddings via sentence-transformers + Qdrant."""
 
 from app.agents.base import BasePassiveAgent
 from app.core.tool_contracts import ToolEnvelope
@@ -9,19 +7,29 @@ from app.core.tool_registry import registry
 
 class TextEmbedAgent(BasePassiveAgent):
     name = "text_embed"
-    version = "0.1.0"
+    version = "0.2.0"
 
     async def execute(self, envelope: ToolEnvelope) -> dict:
-        raw = str(envelope.inputs)
-        h = hashlib.sha256(raw.encode()).hexdigest()[:12]
-        return {"vector_ref": f"qdrant:stub:text:{h}"}
+        from app.tools.text_embed_impl import embed_text
+
+        text = envelope.inputs.get("text", "")
+        memory_id = envelope.inputs.get("memory_id", "")
+        source_type = envelope.inputs.get("source_type", "file")
+        return await embed_text(text, memory_id=memory_id, source_type=source_type)
 
 
 registry.register(
     name="text_embed",
-    version="0.1.0",
-    description="Generate a text embedding vector reference (stub).",
-    input_schema={"type": "object", "properties": {"text": {"type": "string"}}},
+    version="0.2.0",
+    description="Generate text embeddings via sentence-transformers and upsert to Qdrant.",
+    input_schema={
+        "type": "object",
+        "properties": {
+            "text": {"type": "string"},
+            "memory_id": {"type": "string"},
+            "source_type": {"type": "string"},
+        },
+    },
     output_schema={"type": "object", "properties": {"vector_ref": {"type": "string"}}},
     agent_factory=TextEmbedAgent,
 )

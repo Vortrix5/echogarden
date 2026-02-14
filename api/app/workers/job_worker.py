@@ -79,8 +79,53 @@ async def _handle_ingest_blob(payload: dict) -> None:
     )
 
 
+async def _handle_ingest_capture(payload: dict) -> None:
+    """Process a browser capture job — generate text embedding for the captured text."""
+    memory_id = payload.get("memory_id", "")
+    text = payload.get("text", "")
+    source_type = payload.get("source_type", "browser")
+    card_type = payload.get("card_type", "browser_highlight")
+
+    if not text or not text.strip():
+        logger.info("[CAPTURE] Skipping empty text for memory=%s", memory_id[:12])
+        return
+
+    logger.info(
+        "[CAPTURE] Embedding text for memory=%s type=%s (%d chars)",
+        memory_id[:12], card_type, len(text),
+    )
+
+    # Run text embedding via the tool registry
+    from app.core.tool_contracts import ToolEnvelope
+    from app.core.tool_registry import registry
+
+    entry = registry.get("text_embed")
+    if entry is None:
+        logger.warning("[CAPTURE] text_embed tool not registered — skipping")
+        return
+
+    agent = entry.agent_factory()
+    envelope = ToolEnvelope(
+        callee="text_embed",
+        intent="capture.embed",
+        inputs={"text": text, "memory_id": memory_id, "source_type": source_type},
+        constraints={"timeout_ms": 120000},
+    )
+    result = await agent.run(envelope)
+
+    if result.status.value == "ok":
+        vector_ref = result.outputs.get("vector_ref", "")
+        if vector_ref:
+            from app.db import repo as db_repo
+            db_repo.insert_embedding(memory_id, modality="text", vector_ref=vector_ref)
+            logger.info("[CAPTURE] Embedding stored: %s for memory=%s", vector_ref[:30], memory_id[:12])
+    else:
+        logger.warning("[CAPTURE] text_embed failed for memory=%s: %s", memory_id[:12], result.error)
+
+
 _JOB_HANDLERS = {
     "ingest_blob": _handle_ingest_blob,
+    "ingest_capture": _handle_ingest_capture,
 }
 
 

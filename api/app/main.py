@@ -5,7 +5,9 @@ from fastapi import FastAPI
 from app.db.migrate import run_migration
 from app.routers import cards, chat, graph, health, ingest, tools
 from app.routers import capture as capture_router
+from app.routers import capture_browser
 from app.routers import exec_trace, tool_calls
+from app.routers import debug as debug_router
 from app.capture.watcher import watch_loop
 from app.workers.job_worker import worker_loop
 
@@ -31,6 +33,9 @@ async def lifespan(app: FastAPI):
     # Startup: run idempotent schema migration
     run_migration()
 
+    # Pre-load ML models in background so first ingest doesn't timeout
+    preload_task = asyncio.create_task(_preload_models(), name="model-preload")
+
     # Launch continuous background tasks
     watcher_task = asyncio.create_task(watch_loop(), name="file-watcher")
     worker_task = asyncio.create_task(worker_loop(), name="job-worker")
@@ -38,13 +43,40 @@ async def lifespan(app: FastAPI):
     yield
 
     # Shutdown: cancel background tasks
+    preload_task.cancel()
     watcher_task.cancel()
     worker_task.cancel()
-    for t in (watcher_task, worker_task):
+    for t in (preload_task, watcher_task, worker_task):
         try:
             await t
         except asyncio.CancelledError:
             pass
+
+
+async def _preload_models():
+    """Warm up ML models in background threads so first tool calls are fast."""
+    logger = logging.getLogger("echogarden.preload")
+    import os
+    openclip_mode = os.environ.get("EG_OPENCLIP_MODE", "local")
+
+    # Preload sentence-transformers
+    try:
+        logger.info("Pre-loading sentence-transformers model...")
+        from app.tools.text_embed_impl import _load_model as load_st
+        await asyncio.to_thread(load_st)
+        logger.info("Sentence-transformers model ready.")
+    except Exception:
+        logger.exception("Failed to preload sentence-transformers")
+
+    # Preload OpenCLIP (if not stub)
+    if openclip_mode != "stub":
+        try:
+            logger.info("Pre-loading OpenCLIP model...")
+            from app.tools.vision_embed_impl import _load_model as load_clip
+            await asyncio.to_thread(load_clip)
+            logger.info("OpenCLIP model ready.")
+        except Exception:
+            logger.exception("Failed to preload OpenCLIP")
 
 
 app = FastAPI(title="EchoGarden", docs_url="/docs", lifespan=lifespan)
@@ -56,5 +88,7 @@ app.include_router(ingest.router)
 app.include_router(chat.router)
 app.include_router(graph.router)
 app.include_router(capture_router.router)
+app.include_router(capture_browser.router)
 app.include_router(exec_trace.router)
 app.include_router(tool_calls.router)
+app.include_router(debug_router.router)

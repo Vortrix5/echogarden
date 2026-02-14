@@ -9,12 +9,18 @@ from app.orchestrator.models import PipelineType, ToolStep
 # ── Mime / extension → pipeline mapping ───────────────────
 
 _TEXT_MIMES = {"text/plain", "text/markdown", "text/csv", "text/x-log", "application/json"}
-_DOC_MIMES = {"application/pdf", "application/vnd.openxmlformats-officedocument.wordprocessingml.document"}
+_DOC_MIMES = {
+    "application/pdf",
+    "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+    "text/html",
+    "application/xhtml+xml",
+}
 _IMAGE_MIMES_PREFIX = "image/"
 _AUDIO_MIMES_PREFIX = "audio/"
 
 _TEXT_EXTENSIONS = {".txt", ".md", ".json", ".csv", ".log"}
-_DOC_EXTENSIONS = {".pdf", ".docx"}
+_DOC_EXTENSIONS = {".pdf", ".docx", ".pptx", ".html", ".htm", ".xhtml"}
 _IMAGE_EXTENSIONS = {".png", ".jpg", ".jpeg", ".gif", ".bmp", ".tiff", ".webp", ".svg"}
 _AUDIO_EXTENSIONS = {".mp3", ".wav", ".flac", ".ogg", ".m4a", ".aac", ".wma", ".opus"}
 
@@ -62,7 +68,7 @@ def build_ingest_steps(
                 tool_name="text_embed",
                 intent="ingest.embed",
                 inputs={},  # filled at runtime from previous output
-                timeout_ms=10000,
+                timeout_ms=120000,
                 depends_on=["doc_parse"],
             ),
             ToolStep(
@@ -89,13 +95,13 @@ def build_ingest_steps(
             tool_name="asr",
             intent="ingest.asr",
             inputs={"audio_path": path},
-            timeout_ms=60000,
+            timeout_ms=120000,
         ),
         ToolStep(
             tool_name="text_embed",
             intent="ingest.embed",
             inputs={},
-            timeout_ms=10000,
+            timeout_ms=120000,
             depends_on=["asr"],
         ),
         ToolStep(
