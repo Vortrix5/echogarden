@@ -33,9 +33,11 @@ CREATE TABLE IF NOT EXISTS graph_edge (
     provenance   JSON
 );
 
-CREATE INDEX IF NOT EXISTS idx_graph_edge_from ON graph_edge(from_node_id);
-CREATE INDEX IF NOT EXISTS idx_graph_edge_to   ON graph_edge(to_node_id);
-CREATE INDEX IF NOT EXISTS idx_graph_edge_type ON graph_edge(edge_type);
+CREATE INDEX IF NOT EXISTS idx_graph_edge_from  ON graph_edge(from_node_id);
+CREATE INDEX IF NOT EXISTS idx_graph_edge_to    ON graph_edge(to_node_id);
+CREATE INDEX IF NOT EXISTS idx_graph_edge_type  ON graph_edge(edge_type);
+CREATE INDEX IF NOT EXISTS idx_graph_edge_valid ON graph_edge(valid_from, valid_to);
+CREATE INDEX IF NOT EXISTS idx_graph_node_type  ON graph_node(node_type);
 
 -- ── Embeddings ───────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS embedding (

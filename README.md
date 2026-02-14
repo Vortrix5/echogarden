@@ -66,6 +66,73 @@ curl -X POST http://127.0.0.1:8000/chat \
   -d '{"user_text": "What is EchoGarden?"}'
 ```
 
+## Phase 2 — Graph Service MVP
+
+### Upsert nodes and edges
+
+```bash
+curl -X POST http://127.0.0.1:8000/graph/upsert \
+  -H "Content-Type: application/json" \
+  -d '{
+    "nodes": [
+      {"node_id": "ent:echogarden", "node_type": "Entity", "props": {"label": "EchoGarden"}},
+      {"node_id": "ent:knowledge",  "node_type": "Entity", "props": {"label": "Knowledge"}}
+    ],
+    "edges": [
+      {
+        "from_node_id": "ent:echogarden",
+        "to_node_id":   "ent:knowledge",
+        "edge_type":    "ABOUT",
+        "weight":       1.0,
+        "provenance":   {"created_by": "manual", "confidence": 1.0, "migrated": false}
+      }
+    ]
+  }'
+```
+
+### Query a node's neighbors
+
+```bash
+curl -X POST http://127.0.0.1:8000/graph/query \
+  -H "Content-Type: application/json" \
+  -d '{"node_id": "ent:echogarden", "direction": "both", "limit": 20}'
+```
+
+### Expand from a memory node (1-hop BFS)
+
+```bash
+# First ingest some text:
+curl -X POST http://127.0.0.1:8000/ingest \
+  -H "Content-Type: application/json" \
+  -d '{"text": "EchoGarden is a local-first Knowledge garden built with FastAPI."}'
+
+# Use the returned memory_id to expand:
+curl -X POST http://127.0.0.1:8000/graph/expand \
+  -H "Content-Type: application/json" \
+  -d '{
+    "seed_node_ids": ["mem:<MEMORY_ID>"],
+    "hops": 1,
+    "direction": "both",
+    "max_nodes": 100,
+    "max_edges": 200
+  }'
+```
+
+### Expand with edge-type and time filters
+
+```bash
+curl -X POST http://127.0.0.1:8000/graph/expand \
+  -H "Content-Type: application/json" \
+  -d '{
+    "seed_node_ids": ["ent:echogarden"],
+    "hops": 2,
+    "direction": "out",
+    "edge_types": ["MENTIONS", "ABOUT"],
+    "time_min": "2025-01-01T00:00:00",
+    "max_nodes": 50
+  }'
+```
+
 ## Services
 
 | Service | URL | Description |
@@ -111,6 +178,10 @@ docker compose up --build
 │       │   ├── migrate.py
 │       │   ├── conn.py
 │       │   └── repo.py
+│       ├── graph/
+│       │   ├── __init__.py
+│       │   ├── models.py
+│       │   └── service.py
 │       ├── agents/
 │       │   ├── base.py
 │       │   ├── doc_parse.py
@@ -127,6 +198,7 @@ docker compose up --build
 │           ├── cards.py
 │           ├── tools.py
 │           ├── ingest.py
-│           └── chat.py
+│           ├── chat.py
+│           └── graph.py
 └── data/               (created at runtime, git-ignored)
 ```
