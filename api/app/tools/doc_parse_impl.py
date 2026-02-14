@@ -7,9 +7,10 @@ import os
 
 import httpx
 
+from app.core.config import TIKA_URL
+
 logger = logging.getLogger("echogarden.tools.doc_parse")
 
-TIKA_URL = os.environ.get("TIKA_URL", "http://tika:9998")
 _TIMEOUT = 30.0  # seconds
 
 

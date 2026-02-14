@@ -5,7 +5,7 @@ from __future__ import annotations
 from fastapi import APIRouter, Query
 from pydantic import BaseModel
 
-from app.capture.config import EG_MAX_FILE_MB, EG_POLL_INTERVAL, EG_WATCH_ROOTS
+from app.core.config import EG_MAX_FILE_MB, EG_POLL_INTERVAL, EG_WATCH_ROOTS
 from app.capture.repo import count_jobs, list_jobs, count_file_states, count_blobs
 
 router = APIRouter(prefix="/capture", tags=["capture"])

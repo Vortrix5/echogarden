@@ -12,11 +12,13 @@ import logging
 import os
 from pathlib import Path
 
+from app.core.config import EG_MODELS_DIR
+
 logger = logging.getLogger("echogarden.tools.image_caption")
 
 _MAX_CAPTION_LEN = 300
 
-_MODELS_DIR = os.environ.get("EG_MODELS_DIR", "/data/models")
+_MODELS_DIR = EG_MODELS_DIR
 _BLIP_CACHE = os.path.join(_MODELS_DIR, "blip")
 _BLIP_MODEL_NAME = "Salesforce/blip-image-captioning-base"
 

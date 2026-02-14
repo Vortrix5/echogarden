@@ -9,9 +9,9 @@ from __future__ import annotations
 
 import hashlib
 import logging
-import os
 
 from app.agents.base import BasePassiveAgent
+from app.core.config import EG_OLLAMA_MODEL
 from app.core.tool_contracts import ToolEnvelope
 from app.core.tool_registry import registry
 from app.graph.canonicalize import (
@@ -24,7 +24,7 @@ logger = logging.getLogger("echogarden.agents.graph_builder")
 
 _MAX_EDGES_PER_CARD = 30
 _ABOUT_TYPES = {"Project", "Topic"}
-_OLLAMA_MODEL = os.environ.get("EG_OLLAMA_MODEL", "phi3:mini")
+_OLLAMA_MODEL = EG_OLLAMA_MODEL
 
 
 def _entity_node_id(norm_type: str, canonical_name: str) -> str:

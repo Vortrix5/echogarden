@@ -333,7 +333,7 @@ class Orchestrator:
         mime: str,
         size_bytes: int,
     ) -> IngestResult:
-        from app.capture.config import EG_MAX_FILE_BYTES
+        from app.core.config import EG_MAX_FILE_BYTES
         from app.tools.ocr_quality import is_meaningful_ocr
 
         fname = os.path.basename(path)

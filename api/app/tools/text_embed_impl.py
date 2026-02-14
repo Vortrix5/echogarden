@@ -6,11 +6,13 @@ import logging
 import os
 from datetime import datetime, timezone
 
+from app.core.config import EG_MODELS_DIR, EG_TEXT_EMBED_MODEL
+
 logger = logging.getLogger("echogarden.tools.text_embed")
 
-_MODELS_DIR = os.environ.get("EG_MODELS_DIR", "/data/models")
+_MODELS_DIR = EG_MODELS_DIR
 _ST_CACHE = os.path.join(_MODELS_DIR, "sentence_transformers")
-_MODEL_NAME = os.environ.get("EG_TEXT_EMBED_MODEL", "all-MiniLM-L6-v2")
+_MODEL_NAME = EG_TEXT_EMBED_MODEL
 
 _COLLECTION_NAME = "text"
 

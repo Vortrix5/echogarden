@@ -3,17 +3,14 @@
 from __future__ import annotations
 
 import logging
-import os
 
 import httpx
 
+from app.core.config import EG_OLLAMA_MODEL, EG_OLLAMA_URL
+from app.core.config import EG_OLLAMA_TIMEOUT as _OLLAMA_TIMEOUT
+
 logger = logging.getLogger("echogarden.llm.ollama")
 
-EG_OLLAMA_URL: str = os.environ.get(
-    "EG_OLLAMA_URL", "http://host.docker.internal:11434"
-)
-EG_OLLAMA_MODEL: str = os.environ.get("EG_OLLAMA_MODEL", "phi3:mini")
-_OLLAMA_TIMEOUT: float = float(os.environ.get("EG_OLLAMA_TIMEOUT", "180"))
 
 
 class LLMUnavailableError(Exception):

@@ -3,6 +3,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from app.core.config import EG_OPENCLIP_MODE
 from app.db.migrate import run_migration
 from app.routers import cards, chat, graph, health, ingest, tools
 from app.routers import capture as capture_router
@@ -63,8 +64,7 @@ async def lifespan(app: FastAPI):
 async def _preload_models():
     """Warm up ML models in background threads so first tool calls are fast."""
     logger = logging.getLogger("echogarden.preload")
-    import os
-    openclip_mode = os.environ.get("EG_OPENCLIP_MODE", "local")
+    openclip_mode = EG_OPENCLIP_MODE
 
     # Preload sentence-transformers
     try:

@@ -9,11 +9,12 @@ import os
 from fastapi import APIRouter, HTTPException, Query
 from fastapi.responses import FileResponse, RedirectResponse, Response
 
+from app.core.config import EG_THUMB_DIR
 from app.db.conn import get_conn
 
 router = APIRouter(tags=["cards"])
 
-_THUMB_DIR = os.environ.get("EG_THUMB_DIR", "/data/thumbs")
+_THUMB_DIR = EG_THUMB_DIR
 
 
 @router.get("/cards")

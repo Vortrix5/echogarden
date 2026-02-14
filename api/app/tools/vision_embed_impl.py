@@ -6,10 +6,12 @@ import logging
 import os
 from datetime import datetime, timezone
 
+from app.core.config import EG_MODELS_DIR, EG_OPENCLIP_MODE
+
 logger = logging.getLogger("echogarden.tools.vision_embed")
 
-_OPENCLIP_MODE = os.environ.get("EG_OPENCLIP_MODE", "local")
-_MODELS_DIR = os.environ.get("EG_MODELS_DIR", "/data/models")
+_OPENCLIP_MODE = EG_OPENCLIP_MODE
+_MODELS_DIR = EG_MODELS_DIR
 _OPENCLIP_CACHE = os.path.join(_MODELS_DIR, "openclip")
 
 _COLLECTION_NAME = "vision"

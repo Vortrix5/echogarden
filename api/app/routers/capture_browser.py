@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import logging
-import os
 import uuid
 from datetime import datetime, timezone
 from typing import Any
@@ -12,6 +11,7 @@ from fastapi import APIRouter, Depends, Header, HTTPException
 from pydantic import BaseModel, Field
 
 from app.capture.repo import upsert_source, enqueue_job
+from app.core.config import EG_CAPTURE_API_KEY
 from app.db import repo as db_repo
 
 logger = logging.getLogger("echogarden.capture.browser")
@@ -20,7 +20,7 @@ router = APIRouter(prefix="/capture/browser", tags=["browser-capture"])
 
 # ── API key auth ──────────────────────────────────────────
 
-_CAPTURE_API_KEY = os.environ.get("EG_CAPTURE_API_KEY", "")
+_CAPTURE_API_KEY = EG_CAPTURE_API_KEY
 
 
 async def _verify_api_key(x_eg_key: str = Header(default="", alias="X-EG-KEY")) -> None:

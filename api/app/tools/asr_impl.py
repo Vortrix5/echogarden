@@ -5,12 +5,14 @@ from __future__ import annotations
 import logging
 import os
 
+from app.core.config import EG_MODELS_DIR, EG_WHISPER_MODE, EG_WHISPER_MODEL
+
 logger = logging.getLogger("echogarden.tools.asr")
 
-_WHISPER_MODE = os.environ.get("EG_WHISPER_MODE", "local")
-_MODELS_DIR = os.environ.get("EG_MODELS_DIR", "/data/models")
+_WHISPER_MODE = EG_WHISPER_MODE
+_MODELS_DIR = EG_MODELS_DIR
 _WHISPER_CACHE = os.path.join(_MODELS_DIR, "whisper")
-_WHISPER_MODEL_SIZE = os.environ.get("EG_WHISPER_MODEL", "base")
+_WHISPER_MODEL_SIZE = EG_WHISPER_MODEL
 
 # Global singleton — loaded lazily
 _model = None
