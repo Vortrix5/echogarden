@@ -1,0 +1,9 @@
+# Enough to import the app and run the tests. The ML libraries in
+# requirements.txt are imported lazily and mocked in tests, so CI skips them.
+fastapi
+uvicorn[standard]
+pydantic
+httpx
+pytest
+pytest-asyncio
+ruff
