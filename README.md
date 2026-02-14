@@ -133,6 +133,86 @@ curl -X POST http://127.0.0.1:8000/graph/expand \
   }'
 ```
 
+## Phase 3 — Active Orchestrator + Execution Graph
+
+### How it works
+
+1. **File ingestion** — when a file is dropped into the watch folder, the watcher enqueues a job with a `trace_id`. The worker delegates to `Orchestrator.ingest_blob()` which:
+   - Chooses a tool route based on MIME/extension: `doc_parse`, `ocr`, or `asr`
+   - Dispatches each tool via the Tool Registry (not calling tool classes directly)
+   - Writes `TOOL_CALL`, `EXEC_NODE`, `EXEC_EDGE` for every step
+   - Creates an `EXEC_TRACE` record wrapping the full pipeline
+   - Commits a `MEMORY_CARD` and upserts graph nodes/edges
+
+2. **Chat** — `POST /chat` delegates to `Orchestrator.chat()`:
+   - Security check (rejects binary/overly-long input)
+   - `retrieval` → `weaver` → `verifier`
+   - If Ollama is configured, weaver and verifier use the LLM; otherwise stub fallback
+   - Persists `CONVERSATION_TURN` with `trace_id`
+   - Full execution graph written
+
+3. **Idempotency** — if a job is retried with the same `blob_id`, no duplicate memory card is created.
+
+### Inspect execution traces
+
+```bash
+# After dropping a file, get the trace_id from job logs or /capture/jobs
+curl http://127.0.0.1:8000/exec/<TRACE_ID>
+```
+
+Response includes `nodes` (which tools ran, their status, timing) and `edges` (dependencies between steps).
+
+### List tool calls
+
+```bash
+# All recent tool calls
+curl http://127.0.0.1:8000/tool_calls?limit=20
+
+# Filter by trace
+curl "http://127.0.0.1:8000/tool_calls?trace_id=<TRACE_ID>"
+```
+
+### Test: File ingestion trace
+
+```bash
+# 1. Drop a text file
+echo "Phase 3 orchestrator test" > ~/echogarden_watch/test_phase3.txt
+
+# 2. Wait 3 seconds, then check jobs
+curl http://127.0.0.1:8000/capture/jobs?limit=1
+
+# 3. Get the trace_id from the job payload, then:
+curl http://127.0.0.1:8000/exec/<TRACE_ID>
+# You should see nodes for: doc_parse, text_embed, graph_builder
+```
+
+### Test: Chat trace
+
+```bash
+# 1. Send a chat message
+curl -X POST http://127.0.0.1:8000/chat \
+  -H "Content-Type: application/json" \
+  -d '{"user_text": "What is EchoGarden?"}'
+
+# 2. Use the trace_id from the response to inspect:
+curl http://127.0.0.1:8000/exec/<TRACE_ID>
+# You should see nodes for: retrieval, weaver, verifier
+```
+
+### Enable Ollama (optional LLM)
+
+1. Install [Ollama](https://ollama.ai/) on your host machine
+2. Pull a model: `ollama pull phi3:mini`
+3. Add to your `.env`:
+
+```dotenv
+EG_OLLAMA_URL=http://host.docker.internal:11434
+EG_OLLAMA_MODEL=phi3:mini
+```
+
+4. Restart: `docker compose up --build`
+5. When chatting, the weaver and verifier will use the LLM instead of stubs.
+
 ## Services
 
 | Service | URL | Description |
@@ -208,6 +288,8 @@ EchoGarden continuously watches a folder on your computer and automatically inge
 |----------|--------|-------------|
 | `/capture/status` | GET | Watch roots, poll interval, job counts |
 | `/capture/jobs` | GET | List jobs (filter: `?status=queued\|done\|error&limit=50`) |
+| `/exec/{trace_id}` | GET | Inspect execution trace (nodes + edges) |
+| `/tool_calls` | GET | List tool calls (`?trace_id=&limit=50`) |
 
 ## Data
 
@@ -237,6 +319,12 @@ docker compose up --build
 │   ├── requirements.txt
 │   └── app/
 │       ├── main.py
+│       ├── orchestrator/
+│       │   ├── __init__.py
+│       │   ├── models.py
+│       │   ├── orchestrator.py
+│       │   ├── router.py
+│       │   └── llm.py
 │       ├── core/
 │       │   ├── config.py
 │       │   ├── tool_contracts.py
@@ -244,6 +332,7 @@ docker compose up --build
 │       ├── db/
 │       │   ├── schema.sql
 │       │   ├── schema_capture.sql
+│       │   ├── schema_phase3.sql
 │       │   ├── migrate.py
 │       │   ├── conn.py
 │       │   └── repo.py
@@ -276,6 +365,8 @@ docker compose up --build
 │           ├── ingest.py
 │           ├── capture.py
 │           ├── chat.py
+│           ├── exec_trace.py
+│           ├── tool_calls.py
 │           └── graph.py
 ├── host_watch/          (default local watch folder)
 └── data/                (created at runtime, git-ignored)

@@ -1,4 +1,7 @@
-"""Continuous background job worker — asyncio task."""
+"""Continuous background job worker — asyncio task.
+
+Phase 3: delegates ingest_blob jobs to the Active Orchestrator.
+"""
 
 from __future__ import annotations
 
@@ -6,39 +9,14 @@ import asyncio
 import json
 import logging
 import os
-import uuid
 
-from app.capture.config import EG_MAX_FILE_BYTES, TEXT_EXTENSIONS
 from app.capture.repo import claim_job, complete_job
-from app.db.repo import insert_memory_card
+from app.orchestrator.orchestrator import Orchestrator
 
 logger = logging.getLogger("echogarden.worker")
 
 _WORKER_SLEEP = 0.5  # seconds between polls when queue is empty
-
-
-def _read_text_content(path: str, max_bytes: int = EG_MAX_FILE_BYTES) -> str:
-    """Read text content from a file, truncating at max_bytes."""
-    try:
-        with open(path, "r", encoding="utf-8", errors="replace") as f:
-            return f.read(max_bytes)
-    except Exception as exc:
-        return f"[Error reading file: {exc}]"
-
-
-def _summarise_text(content: str, path: str) -> str:
-    """Create a simple summary for text content."""
-    lines = content.splitlines()
-    n_lines = len(lines)
-    n_chars = len(content)
-    preview = content[:500].strip()
-    if n_chars > 500:
-        preview += "…"
-    return (
-        f"File: {os.path.basename(path)}\n"
-        f"Lines: {n_lines} | Characters: {n_chars}\n\n"
-        f"{preview}"
-    )
+_orch = Orchestrator()
 
 
 def _format_size(n: int) -> str:
@@ -49,70 +27,55 @@ def _format_size(n: int) -> str:
     return f"{n:.1f} TB"
 
 
-def _handle_ingest_blob(payload: dict) -> None:
-    """Process a single ingest_blob job."""
+async def _handle_ingest_blob(payload: dict) -> None:
+    """Process a single ingest_blob job via the Orchestrator."""
     path: str = payload["path"]
     blob_id: str = payload["blob_id"]
     source_id: str = payload["source_id"]
     mime: str = payload.get("mime", "application/octet-stream")
     size_bytes: int = payload.get("size_bytes", 0)
+    trace_id: str | None = payload.get("trace_id")
     fname = os.path.basename(path)
 
-    ext = os.path.splitext(path)[1].lower()
-    is_text = ext in TEXT_EXTENSIONS
-    too_large = size_bytes > EG_MAX_FILE_BYTES
+    from app.orchestrator.router import choose_pipeline
+    pipeline = choose_pipeline(mime, path)
 
     logger.info(
-        "[PROCESS] %s — %s, %s, text=%s, oversized=%s",
-        fname, mime, _format_size(size_bytes), is_text, too_large,
+        "[PROCESS] %s — mime=%s, %s, pipeline=%s, blob=%s",
+        fname, mime, _format_size(size_bytes), pipeline.value, blob_id[:12],
     )
 
-    memory_id = uuid.uuid4().hex
-
-    if is_text and not too_large:
-        logger.info("[READ]    Reading text content from %s …", fname)
-        content = _read_text_content(path)
-        summary = _summarise_text(content, path)
-        card_type = "file_capture"
-        logger.info(
-            "[CARD]    Creating memory_card type=%s (%d lines, %d chars)",
-            card_type, len(content.splitlines()), len(content),
-        )
-    else:
-        if too_large:
-            reason = f"oversized ({_format_size(size_bytes)} > {EG_MAX_FILE_BYTES // (1024*1024)} MB)"
-            summary = (
-                f"Binary/large file captured; parsing pending.\n"
-                f"File: {fname} | Size: {size_bytes} bytes | MIME: {mime}"
-            )
-        else:
-            reason = f"binary ({mime})"
-            summary = (
-                f"Binary file captured; parsing pending.\n"
-                f"File: {fname} | Size: {size_bytes} bytes | MIME: {mime}"
-            )
-        card_type = "file_capture_placeholder"
-        logger.info(
-            "[CARD]    Creating placeholder card — reason: %s", reason,
-        )
-
-    metadata = {
-        "blob_id": blob_id,
-        "source_id": source_id,
-        "file_path": path,
-        "mime": mime,
-        "size_bytes": size_bytes,
-    }
-
-    insert_memory_card(
-        memory_id=memory_id,
-        card_type=card_type,
-        summary=summary,
-        metadata=metadata,
+    result = await _orch.ingest_blob(
+        blob_id=blob_id,
+        source_id=source_id,
+        path=path,
+        mime=mime,
+        size_bytes=size_bytes,
+        trace_id=trace_id,
     )
+
+    # Log each orchestrator step so the user can see every tool in the pipeline
+    for i, step in enumerate(result.steps, 1):
+        icon = "✓" if step.status == "ok" else "✗"
+        out_keys = list(step.outputs.keys()) if step.outputs else []
+        logger.info(
+            "[STEP %d]  %s %s — %dms — outputs=%s%s",
+            i,
+            icon,
+            step.tool_name,
+            step.elapsed_ms,
+            out_keys,
+            f" error={step.error}" if step.error else "",
+        )
+
     logger.info(
-        "[DONE]    memory_card=%s type=%s for %s",
-        memory_id[:12], card_type, fname,
+        "[DONE]    %s — pipeline=%s, steps=%d, memory_card=%s, trace=%s, status=%s",
+        fname,
+        result.pipeline,
+        len(result.steps),
+        (result.memory_id or "—")[:12],
+        result.trace_id[:12],
+        result.status,
     )
 
 
@@ -123,7 +86,7 @@ _JOB_HANDLERS = {
 
 async def worker_loop() -> None:
     """Run forever: claim and process jobs from the queue."""
-    logger.info("Job worker started")
+    logger.info("Job worker started (Phase 3 — Orchestrator)")
     jobs_processed = 0
     while True:
         try:
@@ -151,7 +114,7 @@ async def worker_loop() -> None:
                 continue
 
             try:
-                await asyncio.to_thread(handler, payload)
+                await handler(payload)
                 await asyncio.to_thread(complete_job, job_id, None)
                 logger.info("[OK]     Job %s completed successfully", job_id[:12])
             except Exception as exc:

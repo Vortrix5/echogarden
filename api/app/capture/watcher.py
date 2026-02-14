@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import os
+import uuid
 from pathlib import Path
 
 from app.capture.config import (
@@ -112,6 +113,7 @@ def _process_file(fpath: Path, st: os.stat_result) -> None:
     logger.info("[BLOB]   blob_id=%s", blob_id[:12])
 
     # ── Step 7: Enqueue ingest job ────────────────────────
+    trace_id = uuid.uuid4().hex
     job_id = enqueue_job(
         job_type="ingest_blob",
         payload={
@@ -121,11 +123,12 @@ def _process_file(fpath: Path, st: os.stat_result) -> None:
             "sha256": sha,
             "mime": mime,
             "size_bytes": size_bytes,
+            "trace_id": trace_id,
         },
     )
     logger.info(
-        "[JOB]    Enqueued ingest_blob job_id=%s for %s",
-        job_id[:12], fpath.name,
+        "[JOB]    Enqueued ingest_blob job_id=%s trace=%s for %s",
+        job_id[:12], trace_id[:12], fpath.name,
     )
     logger.info(
         "[DONE]   Pipeline complete for %s — source=%s blob=%s job=%s",
