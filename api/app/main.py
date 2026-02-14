@@ -7,6 +7,7 @@ from app.routers import cards, chat, graph, health, ingest, tools
 from app.routers import capture as capture_router
 from app.routers import capture_browser
 from app.routers import exec_trace, tool_calls
+from app.routers import debug as debug_router
 from app.capture.watcher import watch_loop
 from app.workers.job_worker import worker_loop
 
@@ -90,3 +91,4 @@ app.include_router(capture_router.router)
 app.include_router(capture_browser.router)
 app.include_router(exec_trace.router)
 app.include_router(tool_calls.router)
+app.include_router(debug_router.router)
