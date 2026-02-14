@@ -68,7 +68,7 @@ def build_ingest_steps(
                 tool_name="text_embed",
                 intent="ingest.embed",
                 inputs={},  # filled at runtime from previous output
-                timeout_ms=10000,
+                timeout_ms=120000,
                 depends_on=["doc_parse"],
             ),
             ToolStep(
@@ -101,7 +101,7 @@ def build_ingest_steps(
             tool_name="text_embed",
             intent="ingest.embed",
             inputs={},
-            timeout_ms=10000,
+            timeout_ms=120000,
             depends_on=["asr"],
         ),
         ToolStep(

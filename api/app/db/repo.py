@@ -142,6 +142,39 @@ def insert_memory_card(
         conn.close()
 
 
+# ── embedding ─────────────────────────────────────────────
+def insert_embedding(
+    memory_id: str,
+    modality: str = "text",
+    vector_ref: str = "",
+) -> str:
+    """Insert an EMBEDDING row linking a memory card to a Qdrant vector."""
+    embedding_id = uuid.uuid4().hex
+    conn = get_conn()
+    try:
+        conn.execute(
+            """INSERT INTO embedding (embedding_id, memory_id, modality, vector_ref)
+               VALUES (?, ?, ?, ?)""",
+            (embedding_id, memory_id, modality, vector_ref),
+        )
+        conn.commit()
+        return embedding_id
+    finally:
+        conn.close()
+
+
+def get_embeddings_for_memory(memory_id: str) -> list[dict[str, Any]]:
+    """Return all EMBEDDING rows for a memory card."""
+    conn = get_conn()
+    try:
+        rows = conn.execute(
+            "SELECT * FROM embedding WHERE memory_id = ?", (memory_id,)
+        ).fetchall()
+        return [dict(r) for r in rows]
+    finally:
+        conn.close()
+
+
 def fts_search_memory_cards(query: str, limit: int = 10) -> list[dict[str, Any]]:
     """Full-text search over memory_card.summary via FTS5."""
     conn = get_conn()
