@@ -78,6 +78,7 @@ class Orchestrator:
         mime: str,
         size_bytes: int = 0,
         trace_id: str | None = None,
+        text: str | None = None,
     ) -> IngestResult:
         trace_id = trace_id or _new_id()
 
@@ -131,6 +132,7 @@ class Orchestrator:
             path=path,
             mime=mime,
             size_bytes=size_bytes,
+            text=text,
         )
 
     # ── Sequential pipeline (doc_parse, asr) ──────────────
@@ -144,6 +146,7 @@ class Orchestrator:
         path: str,
         mime: str,
         size_bytes: int,
+        text: str | None = None,
     ) -> IngestResult:
         # Build steps
         steps_def = build_ingest_steps(
@@ -153,7 +156,10 @@ class Orchestrator:
 
         # If doc_parse pipeline, pre-read text content for the first step
         content_text = ""
-        if pipeline == PipelineType.doc_parse:
+        if text is not None:
+            content_text = text
+            steps_def[0].inputs["text"] = content_text
+        elif pipeline == PipelineType.doc_parse:
             try:
                 content_text = _read_text_content(path)
             except OSError as exc:

@@ -42,6 +42,7 @@ async def ingest(req: IngestRequest):
         mime="text/plain",
         size_bytes=len(req.text.encode()),
         trace_id=trace_id,
+        text=req.text,
     )
 
     return IngestResponse(
