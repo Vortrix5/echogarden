@@ -201,6 +201,13 @@ class Orchestrator:
         # Commit memory card
         memory_id = _new_id()
         summary = (extracted_text or "")[:500]
+
+        # Get text embedding vector_ref if available
+        text_vector_ref = ""
+        for sr in step_results:
+            if sr.tool_name == "text_embed" and sr.status == "ok":
+                text_vector_ref = sr.outputs.get("vector_ref", "")
+
         metadata = {
             "blob_id": blob_id,
             "source_id": source_id,
@@ -209,6 +216,8 @@ class Orchestrator:
             "size_bytes": size_bytes,
             "trace_id": trace_id,
             "pipeline": pipeline.value,
+            "content_text": (extracted_text or "")[:5000],
+            "text_vector_ref": text_vector_ref or None,
         }
         db_repo.insert_memory_card(
             memory_id=memory_id,
@@ -216,6 +225,11 @@ class Orchestrator:
             summary=summary,
             metadata=metadata,
         )
+
+        # Persist EMBEDDING row for text modality
+        if text_vector_ref:
+            db_repo.insert_embedding(memory_id, modality="text", vector_ref=text_vector_ref)
+
         logger.info(
             "[ORCH]   trace=%s — memory_card=%s created",
             trace_id[:12], memory_id[:12],
