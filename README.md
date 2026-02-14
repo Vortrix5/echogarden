@@ -141,6 +141,74 @@ curl -X POST http://127.0.0.1:8000/graph/expand \
 | Qdrant | http://127.0.0.1:6333 | Vector search engine |
 | Swagger | http://127.0.0.1:8000/docs | Interactive API docs |
 
+## Host Folder Capture
+
+EchoGarden continuously watches a folder on your computer and automatically ingests any files you drop into it.
+
+### Setup
+
+1. **Create a watch folder** anywhere on your machine:
+
+   ```bash
+   mkdir ~/echogarden_watch
+   ```
+
+2. **Set the path** in your `.env` file:
+
+   ```dotenv
+   EG_HOST_WATCH_PATH=/Users/me/echogarden_watch
+   ```
+
+3. **Start the services:**
+
+   ```bash
+   docker compose up --build
+   ```
+
+4. **Drop a file** into the watch folder:
+
+   ```bash
+   echo "Hello EchoGarden" > ~/echogarden_watch/hello.txt
+   ```
+
+5. **Verify** capture (within ~2 seconds):
+
+   ```bash
+   # Check watcher status and job counts
+   curl http://127.0.0.1:8000/capture/status
+
+   # List recent jobs
+   curl http://127.0.0.1:8000/capture/jobs
+
+   # See the created memory card
+   curl http://127.0.0.1:8000/cards
+   ```
+
+### How It Works
+
+- A **polling watcher** scans the mounted folder every 2 seconds (configurable via `EG_POLL_INTERVAL`).
+- New or modified files are hashed (streaming SHA-256), registered as `source` + `blob` rows, and a `job` is enqueued.
+- A **background worker** picks up queued jobs and creates `MEMORY_CARD` entries:
+  - **Text files** (`.txt`, `.md`, `.json`, `.csv`, `.log`): full content summary.
+  - **Binary / large files** (> 20 MB): placeholder card with metadata.
+- Hidden files, directories, and system folders are automatically skipped.
+- Duplicate detection is based on `mtime_ns + size_bytes` — unchanged files are ignored.
+
+### Configuration
+
+| Env Var | Default | Description |
+|---------|---------|-------------|
+| `EG_HOST_WATCH_PATH` | `./host_watch` | Absolute path to watch folder on host |
+| `EG_POLL_INTERVAL` | `2` | Seconds between scans |
+| `EG_MAX_FILE_MB` | `20` | Max file size (MB) for content reading |
+
+### API Endpoints
+
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/capture/status` | GET | Watch roots, poll interval, job counts |
+| `/capture/jobs` | GET | List jobs (filter: `?status=queued\|done\|error&limit=50`) |
+
 ## Data
 
 All persistent data is stored in `./data/` on the host:
@@ -175,9 +243,17 @@ docker compose up --build
 │       │   └── tool_registry.py
 │       ├── db/
 │       │   ├── schema.sql
+│       │   ├── schema_capture.sql
 │       │   ├── migrate.py
 │       │   ├── conn.py
 │       │   └── repo.py
+│       ├── capture/
+│       │   ├── config.py
+│       │   ├── hasher.py
+│       │   ├── repo.py
+│       │   └── watcher.py
+│       ├── workers/
+│       │   └── job_worker.py
 │       ├── graph/
 │       │   ├── __init__.py
 │       │   ├── models.py
@@ -198,7 +274,9 @@ docker compose up --build
 │           ├── cards.py
 │           ├── tools.py
 │           ├── ingest.py
+│           ├── capture.py
 │           ├── chat.py
 │           └── graph.py
-└── data/               (created at runtime, git-ignored)
+├── host_watch/          (default local watch folder)
+└── data/                (created at runtime, git-ignored)
 ```

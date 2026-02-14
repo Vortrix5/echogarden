@@ -2,8 +2,13 @@ services:
   api:
     build: ./api
     env_file: .env
+    environment:
+      - EG_WATCH_ROOTS=/host_watch
+      - EG_POLL_INTERVAL=${EG_POLL_INTERVAL:-2}
+      - EG_MAX_FILE_MB=${EG_MAX_FILE_MB:-20}
     volumes:
       - ./data:/data
+      - ${EG_HOST_WATCH_PATH:-./host_watch}:/host_watch:ro
     ports:
       - "127.0.0.1:8000:8000"
     depends_on:
