@@ -219,7 +219,176 @@ EG_OLLAMA_MODEL=phi3:mini
 |---------|-----|-------------|
 | API | http://127.0.0.1:8000 | FastAPI backend |
 | Qdrant | http://127.0.0.1:6333 | Vector search engine |
+| Tika | (internal :9998) | Document parsing (PDF/DOCX/PPTX/HTML) |
 | Swagger | http://127.0.0.1:8000/docs | Interactive API docs |
+
+## Phase 4 — Real Multimodal Ingestion + Browser Capture
+
+### What's New
+
+- **Apache Tika** parses PDF, DOCX, PPTX, HTML, and TXT files into extracted text.
+- **Tesseract OCR** extracts text from images (PNG, JPG, etc.).
+- **faster-whisper** (local) transcribes audio files (WAV, MP3, M4A, etc.).
+- **OpenCLIP** generates image embeddings and upserts to Qdrant (`vision` collection).
+- **sentence-transformers** (all-MiniLM-L6-v2) generates text embeddings and upserts to Qdrant (`text` collection).
+- **Browser capture endpoints** for highlights, bookmarks, research sessions, and visits.
+- **EMBEDDING rows** are persisted in SQLite linking memory cards to Qdrant point IDs.
+
+### Setup
+
+```bash
+# 1. Copy and configure environment
+cp .env.example .env
+# Edit .env: set EG_HOST_WATCH_PATH and EG_CAPTURE_API_KEY
+
+# 2. Build and start (includes Tika service)
+docker compose up --build
+```
+
+> **Note:** First startup will download ML models (~500MB for whisper base + sentence-transformers + OpenCLIP). Models are cached under `./data/models/` and persist across restarts.
+
+> **Lightweight mode:** Set `EG_WHISPER_MODE=stub` and `EG_OPENCLIP_MODE=stub` in `.env` to skip model downloads during development.
+
+### Test 1: PDF Ingestion via Tika
+
+```bash
+# Drop a PDF into the watched folder
+cp /path/to/sample.pdf ~/echogarden_watch/
+
+# Wait ~5 seconds, then verify:
+# 1. Job completed
+curl http://127.0.0.1:8000/capture/jobs?limit=1
+# 2. Memory card created with extracted text
+curl http://127.0.0.1:8000/cards | python3 -m json.tool | head -30
+# 3. Check embeddings exist
+curl "http://127.0.0.1:8000/cards" | python3 -c "
+import json,sys
+cards=json.load(sys.stdin)
+if cards: print('Memory ID:', cards[0]['memory_id'])
+"
+```
+
+### Test 2: Image OCR + Vision Embedding
+
+```bash
+# Drop a PNG screenshot
+cp /path/to/screenshot.png ~/echogarden_watch/
+
+# Wait ~10 seconds, then verify:
+curl http://127.0.0.1:8000/cards | python3 -c "
+import json, sys
+cards = json.load(sys.stdin)
+for c in cards:
+    meta = json.loads(c.get('metadata','{}')) if isinstance(c.get('metadata'), str) else c.get('metadata',{})
+    if meta.get('pipeline') == 'ocr':
+        print('OCR Card:', c['memory_id'])
+        print('  OCR text:', (meta.get('content_text',''))[:100])
+        print('  Vision ref:', meta.get('vision_vector_ref'))
+        print('  Text ref:', meta.get('text_vector_ref'))
+        break
+"
+
+# Confirm 2 EMBEDDING rows (text + vision) via exec trace
+curl http://127.0.0.1:8000/capture/jobs?limit=1
+```
+
+### Test 3: Audio Transcription
+
+```bash
+# Drop an audio file
+cp /path/to/recording.wav ~/echogarden_watch/
+
+# Wait ~15 seconds, then verify:
+curl http://127.0.0.1:8000/cards | python3 -c "
+import json, sys
+cards = json.load(sys.stdin)
+for c in cards:
+    meta = json.loads(c.get('metadata','{}')) if isinstance(c.get('metadata'), str) else c.get('metadata',{})
+    if meta.get('pipeline') == 'asr':
+        print('ASR Card:', c['memory_id'])
+        print('  Transcript:', (meta.get('content_text',''))[:200])
+        break
+"
+```
+
+### Test 4: Browser Highlight Capture
+
+```bash
+# POST a highlight (requires API key)
+curl -X POST http://127.0.0.1:8000/capture/browser/highlight \
+  -H "Content-Type: application/json" \
+  -H "X-EG-KEY: changeme-to-a-strong-secret" \
+  -d '{
+    "url": "https://example.com/article",
+    "title": "Example Article",
+    "highlight_text": "This is an important highlighted passage from the article.",
+    "context": "The surrounding context paragraph."
+  }'
+
+# Verify the memory card was created
+curl http://127.0.0.1:8000/cards | python3 -c "
+import json, sys
+cards = json.load(sys.stdin)
+for c in cards:
+    if c.get('type') == 'browser_highlight':
+        print('Highlight Card:', c['memory_id'])
+        print('  Summary:', c['summary'][:100])
+        break
+"
+```
+
+### Test 5: Browser Bookmark
+
+```bash
+curl -X POST http://127.0.0.1:8000/capture/browser/bookmark \
+  -H "Content-Type: application/json" \
+  -H "X-EG-KEY: changeme-to-a-strong-secret" \
+  -d '{
+    "url": "https://example.com/resource",
+    "title": "Useful Resource",
+    "folder": "Research"
+  }'
+```
+
+### Test 6: Research Session
+
+```bash
+curl -X POST http://127.0.0.1:8000/capture/browser/research_session \
+  -H "Content-Type: application/json" \
+  -H "X-EG-KEY: changeme-to-a-strong-secret" \
+  -d '{
+    "session_title": "ML Papers Review",
+    "started_ts": "2026-02-14T10:00:00Z",
+    "ended_ts": "2026-02-14T11:30:00Z",
+    "tabs": [
+      {"url": "https://arxiv.org/paper1", "title": "Paper 1"},
+      {"url": "https://arxiv.org/paper2", "title": "Paper 2"}
+    ],
+    "notes": "Reviewed attention mechanisms"
+  }'
+```
+
+### Browser Capture API Endpoints
+
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/capture/browser/highlight` | POST | Capture text highlight from a page |
+| `/capture/browser/bookmark` | POST | Capture a bookmarked page |
+| `/capture/browser/research_session` | POST | Capture a multi-tab research session |
+| `/capture/browser/visit` | POST | Capture a page visit (opt-in) |
+| `/capture/browser/import_history` | POST | Import browsing history (extension-pushed) |
+
+All browser capture endpoints require the `X-EG-KEY` header matching `EG_CAPTURE_API_KEY`.
+
+### Configuration (Phase 4)
+
+| Env Var | Default | Description |
+|---------|---------|-------------|
+| `TIKA_URL` | `http://tika:9998` | Apache Tika server URL |
+| `EG_MODELS_DIR` | `/data/models` | Model cache directory |
+| `EG_WHISPER_MODE` | `local` | `local` or `stub` for ASR |
+| `EG_OPENCLIP_MODE` | `local` | `local` or `stub` for vision embeddings |
+| `EG_CAPTURE_API_KEY` | (required) | API key for browser capture endpoints |
 
 ## Host Folder Capture
 
@@ -329,6 +498,14 @@ docker compose up --build
 │       │   ├── config.py
 │       │   ├── tool_contracts.py
 │       │   └── tool_registry.py
+│       ├── tools/                     (Phase 4 — real implementations)
+│       │   ├── __init__.py
+│       │   ├── qdrant_client.py
+│       │   ├── doc_parse_impl.py
+│       │   ├── ocr_impl.py
+│       │   ├── asr_impl.py
+│       │   ├── vision_embed_impl.py
+│       │   └── text_embed_impl.py
 │       ├── db/
 │       │   ├── schema.sql
 │       │   ├── schema_capture.sql
@@ -364,10 +541,12 @@ docker compose up --build
 │           ├── tools.py
 │           ├── ingest.py
 │           ├── capture.py
+│           ├── capture_browser.py     (Phase 4 — browser capture)
 │           ├── chat.py
 │           ├── exec_trace.py
 │           ├── tool_calls.py
 │           └── graph.py
 ├── host_watch/          (default local watch folder)
 └── data/                (created at runtime, git-ignored)
+    └── models/          (cached ML models)
 ```
