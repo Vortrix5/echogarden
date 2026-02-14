@@ -2,3 +2,5 @@ fastapi
 uvicorn[standard]
 pydantic
 httpx
+faster-whisper>=0.9.0
+tika>=2.6.0
