@@ -158,23 +158,64 @@ def parse_document(file_path: str) -> Dict[str, Any]:
     return parser_instance.parse(file_path)
 
 
-if __name__ == "__main__":
-    try:
-        parser_instance = DocumentParser()
-        result = parser_instance.parse(
-            r"C:\Users\ilyes\Documents\github\ai_minds\Data Ingestion\Document Parsing\example.pdf"
-        )
+class DocParseAgent(BasePassiveAgent):
+    """Document parsing agent that uses DocumentParser to extract content from files."""
+    
+    name = "doc_parse"
+    version = "0.1.0"
+    
+    def __init__(self):
+        """Initialize the document parsing agent."""
+        self.parser = DocumentParser()
+        logger.info("Initialized DocParseAgent")
+    
+    async def execute(self, envelope: ToolEnvelope) -> dict:
+        """
+        Parse a document and return extracted content.
         
-        if result["status"] == "success":
-            print("TEXT:")
-            print(result["content"][:1000])
+        Args:
+            envelope: ToolEnvelope containing inputs with 'text' (file path)
             
-            print("\nMETADATA:")
-            print(result["metadata"])
-        else:
-            print(f"Parsing failed: {result.get('error')}")
-    except Exception as e:
-        logger.error(f"Processing failed: {str(e)}")
+        Returns:
+            Dictionary with 'content_text' and 'mime' keys
+        """
+        try:
+            # Get file path from inputs
+            file_path = envelope.inputs.get("text", "")
+            
+            if not file_path:
+                return {
+                    "content_text": "",
+                    "mime": "text/plain"
+                }
+            
+            # Parse the document
+            result = self.parser.parse(file_path)
+            
+            if result["status"] == "success":
+                content = result.get("content", "")
+                # Determine MIME type from metadata or file extension
+                metadata = result.get("metadata", {})
+                mime_type = metadata.get("Content-Type", "text/plain")
+                
+                return {
+                    "content_text": content,
+                    "mime": mime_type
+                }
+            else:
+                # Return error as content
+                return {
+                    "content_text": f"Error parsing document: {result.get('error', 'Unknown error')}",
+                    "mime": "text/plain"
+                }
+                
+        except Exception as e:
+            logger.error(f"Agent execution failed: {str(e)}")
+            return {
+                "content_text": f"Error: {str(e)}",
+                "mime": "text/plain"
+            }
+
 
 
 
