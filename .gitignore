@@ -1,6 +1,20 @@
+# Runtime data and the default host watch folder
 data/
+host_watch/
+.env
+
+# Python
 __pycache__/
 *.pyc
-.env
 *.egg-info/
 .venv/
+.pytest_cache/
+.ruff_cache/
+
+# OS / editor
+.DS_Store
+.idea/
+.vscode/
+
+# Local interview notes
+PREP_NOTES.md
