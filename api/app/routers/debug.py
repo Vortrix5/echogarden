@@ -34,19 +34,46 @@ def table_counts() -> dict[str, int]:
 @router.get("/debug/memory_cards")
 def list_memory_cards() -> list[dict]:
     db = get_conn()
+    # Detect available columns
+    cols = [r[1] for r in db.execute("PRAGMA table_info(memory_card)").fetchall()]
+    
+    select_cols = ["memory_id", "type", "summary", "created_at"]
+    has_content_text = "content_text" in cols
+    has_metadata_json = "metadata_json" in cols
+    has_metadata = "metadata" in cols
+    
+    if has_content_text:
+        select_cols.append("content_text")
+    if has_metadata_json:
+        select_cols.append("metadata_json")
+    elif has_metadata:
+        select_cols.append("metadata")
+    
     rows = db.execute(
-        "SELECT memory_id, type, summary, metadata, created_at "
-        "FROM memory_card ORDER BY created_at DESC LIMIT 50"
+        f"SELECT {', '.join(select_cols)} FROM memory_card ORDER BY created_at DESC LIMIT 50"
     ).fetchall()
     out = []
     for r in rows:
-        meta = json.loads(r[3]) if r[3] else {}
+        row_dict = {select_cols[i]: r[i] for i in range(len(select_cols))}
+        
+        # Parse metadata
+        meta_raw = row_dict.get("metadata_json") or row_dict.get("metadata")
+        meta = json.loads(meta_raw) if meta_raw else {}
+        
+        summary = row_dict.get("summary", "") or ""
+        content_text = row_dict.get("content_text", "") or ""
+        
         out.append({
-            "id": r[0],
-            "card_type": r[1],
-            "summary": r[2][:200] if r[2] else "",
+            "id": row_dict["memory_id"],
+            "card_type": row_dict.get("type", ""),
+            "summary": summary[:200],
+            "summary_len": len(summary),
+            "content_text_len": len(content_text),
+            "has_content_text": bool(content_text),
+            "entities_count": len(meta.get("entities", [])),
+            "tags": meta.get("tags", []),
             "metadata": meta,
-            "created_at": r[4],
+            "created_at": row_dict.get("created_at", ""),
         })
     return out
 
@@ -98,7 +125,7 @@ def get_graph() -> dict[str, Any]:
     nodes = []
     for r in nodes_raw:
         props = json.loads(r[2]) if r[2] else {}
-        label = props.get("label", props.get("text", r[0][:20]))
+        label = props.get("name", props.get("label", props.get("text", props.get("summary", r[0][:20]))))
         nodes.append({"id": r[0], "label": label, "kind": r[1] or "Unknown", "meta": props})
 
     edges = []
@@ -179,6 +206,89 @@ def qdrant_info() -> dict[str, Any]:
         except Exception as e:
             result[coll] = {"status": "error", "detail": str(e)}
     return result
+
+
+@router.get("/debug/llm")
+async def llm_status() -> dict[str, Any]:
+    """Check LLM (Ollama) availability and config."""
+    from app.llm.ollama_client import (
+        EG_OLLAMA_MODEL,
+        EG_OLLAMA_URL,
+        ping_ollama,
+    )
+
+    available = await ping_ollama()
+    return {
+        "available": available,
+        "url": EG_OLLAMA_URL,
+        "model": EG_OLLAMA_MODEL,
+    }
+
+
+@router.get("/debug/phase6_summary_stats")
+def phase6_summary_stats() -> dict[str, Any]:
+    """Phase 6: Check last N memory cards for summary vs content_text discipline."""
+    db = get_conn()
+    cols = [r[1] for r in db.execute("PRAGMA table_info(memory_card)").fetchall()]
+    has_content = "content_text" in cols
+    has_meta_json = "metadata_json" in cols
+
+    rows = db.execute(
+        "SELECT memory_id, summary FROM memory_card ORDER BY created_at DESC LIMIT 5"
+    ).fetchall()
+    cards = []
+    for r in rows:
+        entry: dict[str, Any] = {
+            "memory_id": r[0][:12],
+            "summary_len": len(r[1]) if r[1] else 0,
+        }
+        if has_content:
+            ct_row = db.execute(
+                "SELECT LENGTH(content_text) FROM memory_card WHERE memory_id = ?",
+                (r[0],),
+            ).fetchone()
+            entry["content_text_len"] = ct_row[0] if ct_row and ct_row[0] else 0
+
+        if has_meta_json:
+            mj_row = db.execute(
+                "SELECT metadata_json FROM memory_card WHERE memory_id = ?",
+                (r[0],),
+            ).fetchone()
+            if mj_row and mj_row[0]:
+                meta = json.loads(mj_row[0])
+                entry["entities_count"] = len(meta.get("entities", []))
+                entry["tags"] = meta.get("tags", [])
+
+        cards.append(entry)
+
+    # Count graph nodes per trace_id
+    node_counts = []
+    try:
+        trace_rows = db.execute(
+            "SELECT trace_id FROM exec_trace ORDER BY started_ts DESC LIMIT 5"
+        ).fetchall()
+        for tr in trace_rows:
+            tid = tr[0]
+            count = db.execute(
+                """SELECT COUNT(DISTINCT gn.node_id)
+                   FROM graph_node gn
+                   JOIN graph_edge ge ON ge.to_node_id = gn.node_id
+                   WHERE ge.provenance LIKE ?""",
+                (f'%{tid}%',),
+            ).fetchone()
+            node_counts.append({
+                "trace_id": tid[:12],
+                "graph_nodes": count[0] if count else 0,
+            })
+    except Exception:
+        pass
+
+    return {
+        "last_5_cards": cards,
+        "graph_nodes_per_trace": node_counts,
+        "schema_has_content_text": has_content,
+        "schema_has_metadata_json": has_meta_json,
+    }
 
 
 # ──────────────────────────────────────────────────────────
@@ -288,6 +398,12 @@ def debug_dashboard() -> str:
     <h2>Qdrant Vector Collections</h2>
     <div id="qdrant-info" class="loading">Loading…</div>
   </div>
+
+  <!-- LLM Status (Phase 6) -->
+  <div class="card">
+    <h2>LLM Status (Ollama)</h2>
+    <div id="llm-status" class="loading">Checking…</div>
+  </div>
 </div>
 
 <!-- Knowledge Graph (full width) -->
@@ -316,6 +432,19 @@ async function loadAll() {
     fetch(API + '/debug/qdrant').then(r => r.json()),
   ]);
 
+  // LLM status (async, non-blocking)
+  fetch(API + '/debug/llm').then(r => r.json()).then(llm => {
+    const el = document.getElementById('llm-status');
+    if (el) {
+      const cls = llm.available ? 'ok' : 'error';
+      el.innerHTML = tag(cls, llm.available ? 'connected' : 'unavailable')
+        + ' <span class="mono" style="font-size:0.8em;"> ' + esc(llm.model) + ' @ ' + esc(llm.url) + '</span>';
+    }
+  }).catch(() => {
+    const el = document.getElementById('llm-status');
+    if (el) el.innerHTML = tag('error', 'check failed');
+  });
+
   // Stats
   const statsHtml = Object.entries(tables).map(([t, c]) =>
     '<div class="stat"><div class="num">' + c + '</div><div class="lab">' + esc(t) + '</div></div>'
@@ -327,10 +456,17 @@ async function loadAll() {
   if (cards.length === 0) {
     document.getElementById('mc-table').innerHTML = '<em>No memory cards yet</em>';
   } else {
-    let h = '<table><tr><th>ID</th><th>Type</th><th>Summary</th><th>Created</th></tr>';
+    let h = '<table><tr><th>ID</th><th>Type</th><th>Summary</th><th>Sum Len</th><th>Content Len</th><th>Entities</th><th>Tags</th><th>Created</th></tr>';
     cards.forEach(c => {
+      const ents = c.entities_count || 0;
+      const tgs = (c.tags || []).join(', ');
       h += '<tr><td class="mono">' + short(c.id) + '</td><td>' + tag('kind', c.card_type) + '</td>'
-        + '<td>' + esc(c.summary.substring(0, 100)) + '</td><td class="mono">' + esc((c.created_at||'').substring(0,19)) + '</td></tr>';
+        + '<td>' + esc(c.summary.substring(0, 80)) + '</td>'
+        + '<td class="mono">' + (c.summary_len || 0) + '</td>'
+        + '<td class="mono">' + (c.content_text_len || 0) + '</td>'
+        + '<td class="mono">' + ents + '</td>'
+        + '<td style="max-width:120px;overflow:hidden;text-overflow:ellipsis;">' + esc(tgs) + '</td>'
+        + '<td class="mono">' + esc((c.created_at||'').substring(0,19)) + '</td></tr>';
     });
     h += '</table>';
     document.getElementById('mc-table').innerHTML = h;
@@ -429,6 +565,14 @@ async function loadAll() {
 }
 
 const KIND_COLORS = {
+  'MemoryCard': '#58a6ff',
+  'Person': '#3fb950',
+  'Org': '#bc8cff',
+  'Project': '#f0883e',
+  'Topic': '#d29922',
+  'Place': '#f85149',
+  'Other': '#8b949e',
+  // Legacy types
   'Memory': '#58a6ff',
   'Phrase': '#3fb950',
   'Entity': '#bc8cff',
