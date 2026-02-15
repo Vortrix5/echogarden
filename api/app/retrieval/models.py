@@ -9,7 +9,7 @@ from pydantic import BaseModel, Field
 
 class RetrieveRequest(BaseModel):
     query: str
-    top_k: int = Field(default=10, ge=1, le=200)
+    top_k: int = Field(default=8, ge=1, le=200)
     time_min: str | None = None  # ISO-8601 or null
     time_max: str | None = None
     source_types: list[str] | None = None  # e.g. ["file_capture","browser_highlight"]
@@ -42,6 +42,12 @@ class RetrievedCard(BaseModel):
     signals: SignalBreakdown = Field(default_factory=SignalBreakdown)
     reasons: list[str] = Field(default_factory=list)
     graph_path: GraphPath | None = None
+    # Phase 9 — media-first fields
+    title: str | None = None
+    mime: str | None = None
+    media_url: str | None = None
+    thumb_url: str | None = None
+    open_url: str | None = None
 
 
 class RetrieveResponse(BaseModel):

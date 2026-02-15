@@ -12,6 +12,7 @@ _SCHEMA_FILE = _SCHEMA_DIR / "schema.sql"
 _SCHEMA_CAPTURE_FILE = _SCHEMA_DIR / "schema_capture.sql"
 _SCHEMA_PHASE3_FILE = _SCHEMA_DIR / "schema_phase3.sql"
 _SCHEMA_PHASE7_FILE = _SCHEMA_DIR / "schema_phase7.sql"
+_SCHEMA_PHASE8_FILE = _SCHEMA_DIR / "schema_phase8.sql"
 
 
 def _safe_add_column(conn, table: str, column: str, col_type: str) -> None:
@@ -105,7 +106,11 @@ def run_migration() -> None:
             conn.executescript(_SCHEMA_PHASE7_FILE.read_text())
         _safe_add_column(conn, "conversation_turn", "verdict", "TEXT")
 
+        # Phase 8: conversation threads, search_query
+        if _SCHEMA_PHASE8_FILE.exists():
+            conn.executescript(_SCHEMA_PHASE8_FILE.read_text())
+
         conn.commit()
-        logger.info("All migrations complete (Phase 1-7)")
+        logger.info("All migrations complete (Phase 1-8)")
     finally:
         conn.close()

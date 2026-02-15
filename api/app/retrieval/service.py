@@ -15,6 +15,7 @@ from __future__ import annotations
 import json
 import logging
 import math
+import os
 from datetime import datetime, timezone
 from typing import Any
 
@@ -132,6 +133,34 @@ async def hybrid_retrieve(req: RetrieveRequest) -> RetrieveResponse:
         if c.via_entity_ids:
             graph_path = GraphPath(via_entity_ids=c.via_entity_ids)
 
+        # Phase 9 — derive media-first fields from card metadata
+        meta_raw = card.get("metadata_json") or card.get("metadata")
+        meta: dict[str, Any] = {}
+        if meta_raw:
+            try:
+                meta = json.loads(meta_raw) if isinstance(meta_raw, str) else (meta_raw if isinstance(meta_raw, dict) else {})
+            except Exception:
+                meta = {}
+        blob_id = meta.get("blob_id", "")
+        file_path = meta.get("file_path", "")
+        url = meta.get("url", "")
+        mime = meta.get("mime", "")
+        # Resolve mime from blob table if missing
+        if blob_id and not mime:
+            from app.db.conn import get_conn as _gc
+            _cx = _gc()
+            try:
+                _br = _cx.execute("SELECT mime FROM blob WHERE blob_id = ?", (blob_id,)).fetchone()
+                if _br:
+                    mime = _br["mime"] or ""
+            finally:
+                _cx.close()
+        title = _card_title(card.get("summary"), file_path, url, mid)
+        media_url = f"/api/blobs/{blob_id}" if blob_id else ""
+        thumb_url = (f"/api/blobs/{blob_id}/thumb?w=320&h=320"
+                     if blob_id and mime.startswith("image/") else "")
+        open_url = f"/api/cards/{mid}/open" if (blob_id or file_path) else ""
+
         results.append(
             RetrievedCard(
                 memory_id=mid,
@@ -148,10 +177,20 @@ async def hybrid_retrieve(req: RetrieveRequest) -> RetrieveResponse:
                 ),
                 reasons=reasons,
                 graph_path=graph_path,
+                title=title,
+                mime=mime or None,
+                media_url=media_url or None,
+                thumb_url=thumb_url or None,
+                open_url=open_url or None,
             )
         )
 
     results.sort(key=lambda r: r.final_score, reverse=True)
+
+    # ── 6.  Filter out low-relevance noise ────────────────
+    MIN_SCORE = 0.18
+    results = [r for r in results if r.final_score >= MIN_SCORE]
+
     return RetrieveResponse(results=results[: req.top_k])
 
 
@@ -268,3 +307,19 @@ def _resolve_source_type(card: dict[str, Any]) -> str | None:
         except Exception:
             pass
     return None
+
+
+def _card_title(summary: str | None, file_path: str, url: str, mid: str) -> str:
+    """Derive a short human-readable title for a retrieved card."""
+    if file_path:
+        return os.path.basename(file_path)
+    if url:
+        from urllib.parse import urlparse
+        try:
+            host = urlparse(url).hostname or url[:40]
+            return host
+        except Exception:
+            return url[:40]
+    if summary:
+        return summary[:60].rstrip()
+    return mid[:16]

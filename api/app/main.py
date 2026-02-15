@@ -1,6 +1,7 @@
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 
 from app.db.migrate import run_migration
 from app.routers import cards, chat, graph, health, ingest, tools
@@ -9,6 +10,8 @@ from app.routers import capture_browser
 from app.routers import exec_trace, tool_calls
 from app.routers import debug as debug_router
 from app.routers import retrieve as retrieve_router
+from app.routers import digest as digest_router
+from app.routers import graph_ui as graph_ui_router
 from app.capture.watcher import watch_loop
 from app.workers.job_worker import worker_loop
 
@@ -91,15 +94,26 @@ async def _preload_models():
 
 app = FastAPI(title="EchoGarden", docs_url="/docs", lifespan=lifespan)
 
+# CORS — allow the local UI dev server and Docker UI
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["http://localhost:5173", "http://localhost:3000", "http://127.0.0.1:5173"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
 app.include_router(health.router)
 app.include_router(cards.router)
 app.include_router(tools.router)
 app.include_router(ingest.router)
 app.include_router(chat.router)
 app.include_router(graph.router)
+app.include_router(graph_ui_router.router)
 app.include_router(capture_router.router)
 app.include_router(capture_browser.router)
 app.include_router(exec_trace.router)
 app.include_router(tool_calls.router)
 app.include_router(debug_router.router)
 app.include_router(retrieve_router.router)
+app.include_router(digest_router.router)

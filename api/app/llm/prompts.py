@@ -107,19 +107,27 @@ def weaver_prompt(question: str, evidence_block: str, max_citations: int = 8) ->
 def format_evidence_block(evidence: list[dict], max_chars: int = 400) -> str:
     """Format evidence list into a text block for the LLM prompt.
     
-    Limits to top 5 evidence items to keep prompt small for local LLMs.
+    Limits to top 3 evidence items to keep prompt small and reduce hallucination.
     """
+    import os
     lines: list[str] = []
-    for i, ev in enumerate(evidence[:5], 1):
+    for i, ev in enumerate(evidence[:3], 1):
         mid = ev.get("memory_id", "?")
         summary = ev.get("summary", "")
         content = ev.get("content_text", "")
         source_type = ev.get("source_type", "unknown")
         created_at = ev.get("created_at", "")
+        # Derive a human-readable filename
+        file_path = ev.get("file_path", "")
+        if not file_path:
+            meta = ev.get("metadata") or {}
+            if isinstance(meta, dict):
+                file_path = meta.get("file_path", "")
+        label = os.path.basename(file_path) if file_path else (summary[:40] or mid[:12])
         # Use first max_chars of content, or summary if no content
         snippet = (content[:max_chars] if content else summary)[:max_chars]
         lines.append(
-            f"[{i}] memory_id={mid} | source={source_type} | date={created_at}\n"
+            f"[{i}] memory_id={mid} | file={label} | source={source_type} | date={created_at}\n"
             f"    {snippet}"
         )
     return "\n\n".join(lines)
