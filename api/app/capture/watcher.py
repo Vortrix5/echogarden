@@ -8,10 +8,6 @@ import os
 import uuid
 from pathlib import Path
 
-from app.core.config import (
-    EG_POLL_INTERVAL,
-    EG_WATCH_ROOTS,
-)
 from app.capture.hasher import detect_mime, sha256_file
 from app.capture.repo import (
     enqueue_job,
@@ -19,6 +15,10 @@ from app.capture.repo import (
     upsert_blob,
     upsert_file_state,
     upsert_source,
+)
+from app.core.config import (
+    EG_POLL_INTERVAL,
+    EG_WATCH_ROOTS,
 )
 
 logger = logging.getLogger("echogarden.watcher")

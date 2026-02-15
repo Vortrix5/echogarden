@@ -1,37 +1,33 @@
+import asyncio
+import logging
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+# Agents register themselves with the tool registry when imported.
+import app.agents.asr  # noqa: F401
+import app.agents.doc_parse  # noqa: F401
+import app.agents.extractor  # noqa: F401
+import app.agents.graph_builder  # noqa: F401
+import app.agents.image_caption  # noqa: F401
+import app.agents.ocr  # noqa: F401
+import app.agents.retrieval  # noqa: F401
+import app.agents.summarizer  # noqa: F401
+import app.agents.text_embed  # noqa: F401
+import app.agents.verifier  # noqa: F401
+import app.agents.vision_embed  # noqa: F401
+import app.agents.weaver  # noqa: F401
+from app.capture.watcher import watch_loop
 from app.core.config import EG_DEBUG, EG_OPENCLIP_MODE
 from app.db.migrate import run_migration
-from app.routers import cards, chat, graph, health, ingest, tools
 from app.routers import capture as capture_router
-from app.routers import capture_browser
-from app.routers import exec_trace, tool_calls
+from app.routers import capture_browser, cards, chat, exec_trace, graph, health, ingest, tool_calls, tools
 from app.routers import debug as debug_router
-from app.routers import retrieve as retrieve_router
 from app.routers import digest as digest_router
 from app.routers import graph_ui as graph_ui_router
-from app.capture.watcher import watch_loop
+from app.routers import retrieve as retrieve_router
 from app.workers.job_worker import worker_loop
-
-import asyncio
-import logging
-
-# Import agents so they self-register with the tool registry on startup.
-import app.agents.doc_parse  # noqa: F401
-import app.agents.ocr  # noqa: F401
-import app.agents.asr  # noqa: F401
-import app.agents.vision_embed  # noqa: F401
-import app.agents.text_embed  # noqa: F401
-import app.agents.retrieval  # noqa: F401
-import app.agents.graph_builder  # noqa: F401
-import app.agents.weaver  # noqa: F401
-import app.agents.verifier  # noqa: F401
-import app.agents.summarizer  # noqa: F401  (Phase 6)
-import app.agents.extractor  # noqa: F401  (Phase 6)
-import app.agents.image_caption  # noqa: F401  (Phase 7: caption fallback)
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(name)s %(levelname)s %(message)s")
 
@@ -84,8 +80,8 @@ async def _preload_models():
             logger.info("OpenCLIP model ready.")
 
             # Ensure Qdrant vision collection exists
-            from app.tools.vision_embed_impl import _VECTOR_DIM
             from app.tools.qdrant_client import ensure_collection as _ensure_col
+            from app.tools.vision_embed_impl import _VECTOR_DIM
             _ensure_col("vision", _VECTOR_DIM)
             logger.info("Qdrant 'vision' collection ready (dim=%d).", _VECTOR_DIM)
         except Exception:

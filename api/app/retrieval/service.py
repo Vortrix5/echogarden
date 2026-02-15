@@ -251,9 +251,9 @@ def _fts_search(
 
 async def _semantic_search(query: str, limit: int) -> list[tuple[str, float]]:
     """Encode the query with the same model used at ingestion and search Qdrant."""
-    from app.tools.qdrant_client import search_text_vectors
-
     import asyncio
+
+    from app.tools.qdrant_client import search_text_vectors
 
     return await asyncio.to_thread(search_text_vectors, query, limit)
 

@@ -42,33 +42,33 @@ def list_memory_cards() -> list[dict]:
     db = get_conn()
     # Detect available columns
     cols = [r[1] for r in db.execute("PRAGMA table_info(memory_card)").fetchall()]
-    
+
     select_cols = ["memory_id", "type", "summary", "created_at"]
     has_content_text = "content_text" in cols
     has_metadata_json = "metadata_json" in cols
     has_metadata = "metadata" in cols
-    
+
     if has_content_text:
         select_cols.append("content_text")
     if has_metadata_json:
         select_cols.append("metadata_json")
     elif has_metadata:
         select_cols.append("metadata")
-    
+
     rows = db.execute(
         f"SELECT {', '.join(select_cols)} FROM memory_card ORDER BY created_at DESC LIMIT 50"
     ).fetchall()
     out = []
     for r in rows:
         row_dict = {select_cols[i]: r[i] for i in range(len(select_cols))}
-        
+
         # Parse metadata
         meta_raw = row_dict.get("metadata_json") or row_dict.get("metadata")
         meta = json.loads(meta_raw) if meta_raw else {}
-        
+
         summary = row_dict.get("summary", "") or ""
         content_text = row_dict.get("content_text", "") or ""
-        
+
         out.append({
             "id": row_dict["memory_id"],
             "card_type": row_dict.get("type", ""),

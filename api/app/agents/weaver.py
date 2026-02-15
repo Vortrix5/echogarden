@@ -76,7 +76,7 @@ class WeaverAgent(BasePassiveAgent):
         # Otherwise, try LLM then fall back to stub
         try:
             from app.llm.ollama_client import ollama_generate_json
-            from app.llm.prompts import weaver_system, weaver_prompt, format_evidence_block
+            from app.llm.prompts import format_evidence_block, weaver_prompt, weaver_system
 
             evidence_block = format_evidence_block(evidence, max_chars=400)
             prompt = weaver_prompt(question, evidence_block, max_citations)

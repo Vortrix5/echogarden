@@ -106,7 +106,7 @@ def weaver_prompt(question: str, evidence_block: str, max_citations: int = 8) ->
 
 def format_evidence_block(evidence: list[dict], max_chars: int = 400) -> str:
     """Format evidence list into a text block for the LLM prompt.
-    
+
     Limits to top 3 evidence items to keep prompt small and reduce hallucination.
     """
     import os

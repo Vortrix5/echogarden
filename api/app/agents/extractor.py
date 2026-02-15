@@ -9,14 +9,14 @@ import re
 from app.agents.base import BasePassiveAgent
 from app.core.tool_contracts import ToolEnvelope
 from app.core.tool_registry import registry
+from app.graph.canonicalize import normalize_entity_type
 from app.llm.ollama_client import (
     LLMUnavailableError,
     llm_available,
-    ollama_generate_json,
     ollama_generate,
+    ollama_generate_json,
 )
 from app.llm.prompts import extractor_prompt, extractor_retry_prompt, extractor_system
-from app.graph.canonicalize import normalize_entity_type
 
 logger = logging.getLogger("echogarden.agents.extractor")
 

@@ -10,7 +10,7 @@ from typing import Any
 from fastapi import APIRouter, Depends, Header, HTTPException
 from pydantic import BaseModel, Field
 
-from app.capture.repo import upsert_source, enqueue_job
+from app.capture.repo import enqueue_job, upsert_source
 from app.core.config import EG_CAPTURE_API_KEY
 from app.db import repo as db_repo
 

@@ -3,3 +3,12 @@ pythonpath = ["."]
 testpaths = ["tests"]
 asyncio_mode = "auto"
 filterwarnings = ["ignore::DeprecationWarning", "ignore:Using `httpx` with `starlette.testclient`"]
+
+[tool.ruff]
+line-length = 120
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I"]
+# The formatter owns line length; what it can't wrap is SQL and log strings.
+ignore = ["E501"]

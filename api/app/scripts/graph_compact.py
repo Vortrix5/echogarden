@@ -19,8 +19,8 @@ import argparse
 import hashlib
 import json
 import logging
-import sys
 import os
+import sys
 
 # Allow running from repo root or inside container
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "api"))

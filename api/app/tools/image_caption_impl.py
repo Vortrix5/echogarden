@@ -37,7 +37,7 @@ def _load_blip():
 
     try:
         import torch
-        from transformers import BlipProcessor, BlipForConditionalGeneration
+        from transformers import BlipForConditionalGeneration, BlipProcessor
 
         os.makedirs(_BLIP_CACHE, exist_ok=True)
 
@@ -195,6 +195,7 @@ def _caption_with_clip(image_path: str) -> dict | None:
     try:
         import torch
         from PIL import Image
+
         import app.tools.vision_embed_impl as _vmod
 
         model = _vmod._load_model()
@@ -208,7 +209,7 @@ def _caption_with_clip(image_path: str) -> dict | None:
         img_tensor = preprocess(img).unsqueeze(0)
 
         def _classify(labels: list[str], prompt_prefix: str = "a photo of ") -> list[tuple[str, float]]:
-            prompts = [f"{prompt_prefix}{l}" for l in labels]
+            prompts = [f"{prompt_prefix}{label}" for label in labels]
             tokens = tokenizer(prompts)
             with torch.no_grad():
                 img_feat = model.encode_image(img_tensor)

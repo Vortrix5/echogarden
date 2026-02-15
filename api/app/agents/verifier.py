@@ -78,7 +78,7 @@ class VerifierAgent(BasePassiveAgent):
         # Try LLM-based verification
         try:
             from app.llm.ollama_client import ollama_generate_json
-            from app.llm.prompts import verifier_system, verifier_prompt, format_evidence_block
+            from app.llm.prompts import format_evidence_block, verifier_prompt, verifier_system
 
             evidence_block = format_evidence_block(evidence, max_chars=400)
             prompt = verifier_prompt(question, answer, evidence_block)
