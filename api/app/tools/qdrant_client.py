@@ -127,3 +127,45 @@ def collection_exists(name: str) -> bool:
         return r.status_code == 200
     except Exception:
         return False
+
+
+# ── Phase 5: text-vector search for hybrid retrieval ─────
+
+def search_text_vectors(
+    query: str,
+    limit: int = 50,
+) -> list[tuple[str, float]]:
+    """Encode *query* with the same sentence-transformer model used at
+    ingestion time, then search the ``text`` collection in Qdrant.
+
+    Returns ``[(memory_id, normalised_sim_score), ...]`` sorted descending.
+    Cosine similarity is already in [0, 1] for normalised embeddings.
+    """
+    try:
+        from app.tools.text_embed_impl import _load_model
+
+        model = _load_model()
+        if model is None:
+            return []
+
+        vector = model.encode(query, normalize_embeddings=True).tolist()
+
+        hits = search(
+            collection="text",
+            vector=vector,
+            limit=limit,
+        )
+
+        results: list[tuple[str, float]] = []
+        for hit in hits:
+            mid = hit.get("payload", {}).get("memory_id")
+            if not mid:
+                continue
+            score = float(hit.get("score", 0.0))
+            # Clamp to [0, 1]
+            score = max(0.0, min(1.0, score))
+            results.append((mid, score))
+        return results
+    except Exception:
+        logger.exception("search_text_vectors failed")
+        return []

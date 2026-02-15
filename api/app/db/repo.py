@@ -482,6 +482,98 @@ def get_latest_exec_node_for_call(tool_name: str, trace_id: str) -> dict[str, An
         conn.close()
 
 
+# ── Phase 5: hybrid retrieval helpers ─────────────────────
+
+def search_fts_phase5(
+    query: str,
+    limit: int = 50,
+    time_min: str | None = None,
+    time_max: str | None = None,
+    source_types: list[str] | None = None,
+) -> list[tuple[str, float]]:
+    """Full-text search over memory_card_fts.
+
+    Returns list of (memory_id, normalised_fts_score) sorted by relevance.
+    Score is normalised via  1 / (1 + abs(bm25_rank))  → (0, 1].
+    """
+    conn = get_conn()
+    try:
+        table = get_memory_card_table()
+
+        # Ensure FTS table exists (idempotent)
+        try:
+            conn.execute(
+                f"""CREATE VIRTUAL TABLE IF NOT EXISTS memory_card_fts
+                    USING fts5(summary, content='[{table}]', content_rowid='rowid')"""
+            )
+        except Exception:
+            pass
+
+        # Build the query — FTS5 MATCH with optional joins for filtering
+        where_extra = []
+        params: list = [query]
+
+        if time_min:
+            where_extra.append("mc.created_at >= ?")
+            params.append(time_min)
+        if time_max:
+            where_extra.append("mc.created_at <= ?")
+            params.append(time_max)
+        if source_types:
+            ph = ",".join("?" for _ in source_types)
+            where_extra.append(f"mc.type IN ({ph})")
+            params.extend(source_types)
+
+        extra_clause = ""
+        if where_extra:
+            extra_clause = "AND " + " AND ".join(where_extra)
+
+        params.append(limit)
+
+        sql = f"""
+            SELECT mc.memory_id, rank AS raw_score
+            FROM memory_card_fts
+            JOIN [{table}] mc ON mc.rowid = memory_card_fts.rowid
+            WHERE memory_card_fts MATCH ?
+            {extra_clause}
+            ORDER BY rank
+            LIMIT ?
+        """
+
+        rows = conn.execute(sql, params).fetchall()
+        results: list[tuple[str, float]] = []
+        for r in rows:
+            raw = abs(float(r["raw_score"])) if r["raw_score"] else 0.0
+            norm = 1.0 / (1.0 + raw)
+            results.append((r["memory_id"], norm))
+        return results
+    except Exception:
+        logger.debug("FTS search failed — returning empty", exc_info=True)
+        return []
+    finally:
+        conn.close()
+
+
+def fetch_memory_cards_by_ids(memory_ids: list[str]) -> list[dict[str, Any]]:
+    """Bulk-fetch memory card rows by memory_id."""
+    if not memory_ids:
+        return []
+    conn = get_conn()
+    try:
+        table = get_memory_card_table()
+        ph = ",".join("?" for _ in memory_ids)
+        rows = conn.execute(
+            f"SELECT * FROM [{table}] WHERE memory_id IN ({ph})",
+            memory_ids,
+        ).fetchall()
+        return [dict(r) for r in rows]
+    except Exception:
+        logger.debug("fetch_memory_cards_by_ids failed", exc_info=True)
+        return []
+    finally:
+        conn.close()
+
+
 # ── idempotency helpers ───────────────────────────────────
 def find_memory_card_by_blob(blob_id: str) -> str | None:
     """Return existing memory_id if a card already exists for this blob_id."""
