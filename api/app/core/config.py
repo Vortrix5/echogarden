@@ -21,6 +21,9 @@ EG_WHISPER_MODEL: str = os.environ.get("EG_WHISPER_MODEL", "base")
 EG_OPENCLIP_MODE: str = os.environ.get("EG_OPENCLIP_MODE", "local")
 EG_TEXT_EMBED_MODEL: str = os.environ.get("EG_TEXT_EMBED_MODEL", "all-MiniLM-L6-v2")
 
+# Mounts the /debug inspection endpoints, which expose raw tables without auth.
+EG_DEBUG: bool = os.environ.get("EG_DEBUG", "").lower() in ("1", "true", "yes")
+
 # Browser capture. Empty disables the /capture/browser endpoints.
 EG_CAPTURE_API_KEY: str = os.environ.get("EG_CAPTURE_API_KEY", "")
 

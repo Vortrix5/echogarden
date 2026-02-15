@@ -3,7 +3,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.core.config import EG_OPENCLIP_MODE
+from app.core.config import EG_DEBUG, EG_OPENCLIP_MODE
 from app.db.migrate import run_migration
 from app.routers import cards, chat, graph, health, ingest, tools
 from app.routers import capture as capture_router
@@ -114,6 +114,8 @@ app.include_router(capture_router.router)
 app.include_router(capture_browser.router)
 app.include_router(exec_trace.router)
 app.include_router(tool_calls.router)
-app.include_router(debug_router.router)
 app.include_router(retrieve_router.router)
 app.include_router(digest_router.router)
+
+if EG_DEBUG:
+    app.include_router(debug_router.router)
