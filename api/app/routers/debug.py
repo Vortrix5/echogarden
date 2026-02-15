@@ -28,7 +28,14 @@ def table_counts() -> dict[str, int]:
             "SELECT name FROM sqlite_master WHERE type='table' ORDER BY name"
         ).fetchall()
     ]
-    return {t: db.execute(f"SELECT COUNT(*) FROM [{t}]").fetchone()[0] for t in tables}
+    counts: dict[str, int] = {}
+    for t in tables:
+        try:
+            counts[t] = db.execute(f"SELECT COUNT(*) FROM [{t}]").fetchone()[0]
+        except Exception:
+            # Skip FTS shadow tables or broken virtual tables
+            pass
+    return counts
 
 
 @router.get("/debug/memory_cards")
