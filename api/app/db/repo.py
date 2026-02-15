@@ -484,6 +484,24 @@ def get_latest_exec_node_for_call(tool_name: str, trace_id: str) -> dict[str, An
 
 # ── Phase 5: hybrid retrieval helpers ─────────────────────
 
+def _sanitise_fts_query(raw: str) -> str:
+    """Convert a natural-language query into a safe FTS5 MATCH expression.
+
+    1.  Strip characters that FTS5 treats as syntax:  "  *  :  ^  (  )  {  }  ?  !
+    2.  Tokenise on whitespace and drop pure-punctuation / empty tokens.
+    3.  Join with OR so any term match contributes to ranking.
+    Returns empty string if nothing usable remains.
+    """
+    import re
+    # Remove FTS5 special chars
+    cleaned = re.sub(r'["\*\:\^\(\)\{\}\?\!]', " ", raw)
+    tokens = [t for t in cleaned.split() if t and not re.fullmatch(r"[^\w]+", t)]
+    if not tokens:
+        return ""
+    # Wrap each token in quotes to handle hyphens / dots, join with OR
+    return " OR ".join(f'"{t}"' for t in tokens)
+
+
 def search_fts_phase5(
     query: str,
     limit: int = 50,
@@ -496,6 +514,10 @@ def search_fts_phase5(
     Returns list of (memory_id, normalised_fts_score) sorted by relevance.
     Score is normalised via  1 / (1 + abs(bm25_rank))  → (0, 1].
     """
+    fts_query = _sanitise_fts_query(query)
+    if not fts_query:
+        return []
+
     conn = get_conn()
     try:
         table = get_memory_card_table()
@@ -511,7 +533,7 @@ def search_fts_phase5(
 
         # Build the query — FTS5 MATCH with optional joins for filtering
         where_extra = []
-        params: list = [query]
+        params: list = [fts_query]
 
         if time_min:
             where_extra.append("mc.created_at >= ?")
@@ -610,22 +632,47 @@ def insert_conversation_turn(
     user_text: str,
     assistant_text: str,
     trace_id: str | None = None,
+    verdict: str | None = None,
 ) -> None:
     conn = get_conn()
     try:
-        # Check if trace_id column exists
         cols = [r[1] for r in conn.execute("PRAGMA table_info(conversation_turn)").fetchall()]
-        if "trace_id" in cols:
+        col_names = ["turn_id", "ts", "user_text", "assistant_text"]
+        values: list = [turn_id, _now_iso(), user_text, assistant_text]
+        if "trace_id" in cols and trace_id is not None:
+            col_names.append("trace_id")
+            values.append(trace_id)
+        if "verdict" in cols and verdict is not None:
+            col_names.append("verdict")
+            values.append(verdict)
+        placeholders = ", ".join("?" for _ in col_names)
+        sql = f"INSERT INTO conversation_turn ({', '.join(col_names)}) VALUES ({placeholders})"
+        conn.execute(sql, values)
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def insert_chat_citations(turn_id: str, citations: list[dict[str, Any]]) -> None:
+    """Bulk-insert chat_citation rows for a conversation turn."""
+    if not citations:
+        return
+    conn = get_conn()
+    try:
+        for c in citations:
             conn.execute(
-                """INSERT INTO conversation_turn (turn_id, ts, user_text, assistant_text, trace_id)
-                   VALUES (?, ?, ?, ?, ?)""",
-                (turn_id, _now_iso(), user_text, assistant_text, trace_id),
-            )
-        else:
-            conn.execute(
-                """INSERT INTO conversation_turn (turn_id, ts, user_text, assistant_text)
-                   VALUES (?, ?, ?, ?)""",
-                (turn_id, _now_iso(), user_text, assistant_text),
+                """INSERT INTO chat_citation
+                   (citation_id, turn_id, memory_id, quote, span_start, span_end, created_at)
+                   VALUES (?, ?, ?, ?, ?, ?, ?)""",
+                (
+                    uuid.uuid4().hex,
+                    turn_id,
+                    c.get("memory_id", ""),
+                    c.get("quote", ""),
+                    c.get("span_start"),
+                    c.get("span_end"),
+                    _now_iso(),
+                ),
             )
         conn.commit()
     finally:

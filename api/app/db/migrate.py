@@ -11,6 +11,7 @@ _SCHEMA_DIR = Path(__file__).parent
 _SCHEMA_FILE = _SCHEMA_DIR / "schema.sql"
 _SCHEMA_CAPTURE_FILE = _SCHEMA_DIR / "schema_capture.sql"
 _SCHEMA_PHASE3_FILE = _SCHEMA_DIR / "schema_phase3.sql"
+_SCHEMA_PHASE7_FILE = _SCHEMA_DIR / "schema_phase7.sql"
 
 
 def _safe_add_column(conn, table: str, column: str, col_type: str) -> None:
@@ -99,7 +100,12 @@ def run_migration() -> None:
         # Phase 6: content_text + metadata_json on memory_card
         _run_phase6_migration(conn)
 
+        # Phase 7: grounded Q&A — chat_citation table + conversation_turn.verdict
+        if _SCHEMA_PHASE7_FILE.exists():
+            conn.executescript(_SCHEMA_PHASE7_FILE.read_text())
+        _safe_add_column(conn, "conversation_turn", "verdict", "TEXT")
+
         conn.commit()
-        logger.info("All migrations complete (Phase 1-6)")
+        logger.info("All migrations complete (Phase 1-7)")
     finally:
         conn.close()

@@ -632,3 +632,89 @@ open http://127.0.0.1:8000/debug
 
 **Images:**
 `(ocr ∥ vision_embed) → summarizer → extractor → text_embed → graph_builder → commit_memory_card`
+
+## Phase 7 — Grounded Q&A (Weaver + Verifier)
+
+Phase 7 adds a full **retrieval → weave → verify** chat pipeline that produces
+grounded answers with citations and a verification verdict.
+
+### POST /chat
+
+```bash
+curl -X POST http://127.0.0.1:8000/chat \
+  -H "Content-Type: application/json" \
+  -d '{
+    "message": "What is EchoGarden?",
+    "top_k": 8,
+    "use_graph": true,
+    "hops": 1
+  }'
+```
+
+**Response shape:**
+
+```json
+{
+  "trace_id": "...",
+  "answer": "...",
+  "verdict": "pass|revise|abstain",
+  "citations": [
+    {"memory_id": "...", "quote": "...", "source_type": "...", "created_at": "..."}
+  ],
+  "evidence": [
+    {"memory_id": "...", "summary": "...", "snippet": "...", "score": 0.0, "reasons": [...]}
+  ],
+  "steps": [...],
+  "status": "ok"
+}
+```
+
+### How it works
+
+1. **Retrieval** — Phase 5 hybrid search (FTS + semantic + graph expand + recency).
+2. **Weaver** — Produces an answer grounded ONLY in retrieved evidence.
+   - LLM mode: strict system prompt + JSON output with inline citations.
+   - Stub mode: bullet list of top memory summaries.
+3. **Verifier** — Checks that every claim is supported by evidence.
+   - LLM mode: flags unsupported claims, can revise or abstain.
+   - Heuristic mode: checks for citation presence.
+4. **Persist** — Saves `conversation_turn` (with verdict) + `chat_citation` rows.
+5. **Trace** — Full execution graph: retrieval → weaver → verifier.
+
+### Verdicts
+
+| Verdict | Meaning |
+|---------|---------|
+| `pass`    | All claims supported by evidence |
+| `revise`  | Some unsupported claims removed; revised answer returned |
+| `abstain` | Core answer unsupported; explanation returned instead |
+
+### Testing Phase 7
+
+```bash
+# 1. Ingest some content first
+curl -X POST http://127.0.0.1:8000/ingest \
+  -H "Content-Type: application/json" \
+  -d '{"text": "EchoGarden is a local-first personal knowledge garden."}'
+
+# 2. Chat about it
+curl -X POST http://127.0.0.1:8000/chat \
+  -H "Content-Type: application/json" \
+  -d '{"message": "What is EchoGarden?"}'
+
+# 3. Verify trace shows retrieval → weaver → verifier
+# (use trace_id from chat response)
+curl http://127.0.0.1:8000/exec/<trace_id>
+
+# 4. Test abstain with unknown topic
+curl -X POST http://127.0.0.1:8000/chat \
+  -H "Content-Type: application/json" \
+  -d '{"message": "What is the capital of Mars?"}'
+```
+
+### Database (Phase 7)
+
+New/updated tables:
+
+- **conversation_turn** — added `verdict TEXT` column
+- **chat_citation** — `citation_id`, `turn_id`, `memory_id`, `quote`, `span_start`, `span_end`, `created_at`

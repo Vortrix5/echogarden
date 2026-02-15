@@ -34,6 +34,8 @@ from app.orchestrator.router import (
     choose_pipeline,
     is_image_pipeline,
 )
+from app.retrieval.models import RetrieveRequest
+from app.retrieval.service import hybrid_retrieve
 
 logger = logging.getLogger("echogarden.orchestrator")
 
@@ -50,12 +52,13 @@ def _new_id() -> str:
 
 
 def _read_text_content(path: str, max_bytes: int = 20 * 1024 * 1024) -> str:
-    """Best-effort read of text content from a local file."""
-    try:
-        with open(path, "r", encoding="utf-8", errors="replace") as f:
-            return f.read(max_bytes)
-    except Exception as exc:
-        return f"[Error reading file: {exc}]"
+    """Read text content from a local file.
+
+    Raises FileNotFoundError / OSError on failure so the caller can
+    abort the pipeline instead of ingesting an error message.
+    """
+    with open(path, "r", encoding="utf-8", errors="replace") as f:
+        return f.read(max_bytes)
 
 
 # ─────────────────────────────────────────────────────────
@@ -151,7 +154,27 @@ class Orchestrator:
         # If doc_parse pipeline, pre-read text content for the first step
         content_text = ""
         if pipeline == PipelineType.doc_parse:
-            content_text = _read_text_content(path)
+            try:
+                content_text = _read_text_content(path)
+            except OSError as exc:
+                logger.error(
+                    "[ORCH]   trace=%s — cannot read file %s: %s",
+                    trace_id[:12], path, exc,
+                )
+                db_repo.finish_exec_trace(trace_id, "error")
+                return IngestResult(
+                    trace_id=trace_id,
+                    pipeline=pipeline.value,
+                    status="error",
+                    steps=[StepResult(
+                        tool_name="read_file",
+                        call_id=_new_id(),
+                        exec_node_id=_new_id(),
+                        status="error",
+                        error=str(exc),
+                        elapsed_ms=0,
+                    )],
+                )
             steps_def[0].inputs["text"] = content_text
 
         # Generate memory_id early so downstream tools (text_embed, graph_builder) can reference it
@@ -684,7 +707,16 @@ class Orchestrator:
         )
 
     # ── Chat ──────────────────────────────────────────────
-    async def chat(self, user_text: str, *, trace_id: str | None = None) -> ChatResult:
+    async def chat(
+        self,
+        user_text: str,
+        *,
+        trace_id: str | None = None,
+        top_k: int = 8,
+        use_graph: bool = True,
+        hops: int = 1,
+    ) -> ChatResult:
+        """Phase 7 grounded Q&A: retrieval → weaver → verifier → persist."""
         trace_id = trace_id or _new_id()
 
         db_repo.insert_exec_trace(trace_id, metadata={
@@ -706,31 +738,47 @@ class Orchestrator:
                 status="rejected",
             )
 
-        # ── Step 1: Retrieval ─────────────────────────────
+        # ── Step 1: Retrieval (Phase 5 hybrid) ────────────
+        retrieve_req = RetrieveRequest(
+            query=user_text,
+            top_k=top_k * 3,
+            use_graph=use_graph,
+            hops=hops,
+        )
+        retrieve_resp = await hybrid_retrieve(retrieve_req)
+        raw_results = [r.dict() for r in retrieve_resp.results]
+
+        # Record retrieval as a traced tool dispatch
         sr_retrieval = await self._dispatch_tool(
             trace_id=trace_id,
             tool_name="retrieval",
             intent="chat.retrieve",
-            inputs={"query": user_text, "limit": 10},
-            timeout_ms=10000,
+            inputs={"query": user_text, "limit": top_k * 3, "hops": hops,
+                    "_llm_override": {"results": raw_results}},
+            timeout_ms=15000,
             prev_exec_node_id=prev_exec_node_id,
         )
         step_results.append(sr_retrieval)
         prev_exec_node_id = sr_retrieval.exec_node_id
-        context = sr_retrieval.outputs.get("results", [])
+
+        # ── Build evidence with content_text ──────────────
+        evidence = self._build_evidence(raw_results, top_k)
 
         # ── Step 2: Weave ─────────────────────────────────
         use_llm = await llm_available()
         if use_llm:
             logger.info("[ORCH]   trace=%s — using LLM for weave", trace_id[:12])
-            llm_result = await weave_with_llm(user_text, context)
-            # Still dispatch through registry for tracing
+            llm_result = await weave_with_llm(user_text, evidence)
             sr_weave = await self._dispatch_tool(
                 trace_id=trace_id,
                 tool_name="weaver",
                 intent="chat.weave",
-                inputs={"query": user_text, "context": context, "_llm_override": llm_result},
-                timeout_ms=30000,
+                inputs={
+                    "question": user_text,
+                    "evidence": evidence,
+                    "_llm_override": llm_result,
+                },
+                timeout_ms=180000,
                 prev_exec_node_id=prev_exec_node_id,
             )
         else:
@@ -738,7 +786,7 @@ class Orchestrator:
                 trace_id=trace_id,
                 tool_name="weaver",
                 intent="chat.weave",
-                inputs={"query": user_text, "context": context},
+                inputs={"question": user_text, "evidence": evidence},
                 timeout_ms=30000,
                 prev_exec_node_id=prev_exec_node_id,
             )
@@ -749,13 +797,19 @@ class Orchestrator:
 
         # ── Step 3: Verify ────────────────────────────────
         if use_llm:
-            verify_result = await verify_with_llm(answer, context)
+            verify_result = await verify_with_llm(user_text, answer, evidence)
             sr_verify = await self._dispatch_tool(
                 trace_id=trace_id,
                 tool_name="verifier",
                 intent="chat.verify",
-                inputs={"answer": answer, "context": context, "_llm_override": verify_result},
-                timeout_ms=15000,
+                inputs={
+                    "question": user_text,
+                    "answer": answer,
+                    "evidence": evidence,
+                    "citations": citations,
+                    "_llm_override": verify_result,
+                },
+                timeout_ms=60000,
                 prev_exec_node_id=prev_exec_node_id,
             )
         else:
@@ -763,31 +817,123 @@ class Orchestrator:
                 trace_id=trace_id,
                 tool_name="verifier",
                 intent="chat.verify",
-                inputs={"answer": answer, "context": context},
+                inputs={
+                    "question": user_text,
+                    "answer": answer,
+                    "evidence": evidence,
+                    "citations": citations,
+                },
                 timeout_ms=15000,
                 prev_exec_node_id=prev_exec_node_id,
             )
         step_results.append(sr_verify)
-        verdict = sr_verify.outputs.get("verdict", "")
 
-        # If no LLM and no citations, mark needs_review
-        if not use_llm and not citations:
-            verdict = "needs_review"
+        verdict = sr_verify.outputs.get("verdict", "pass")
+        revised_answer = sr_verify.outputs.get("revised_answer", "")
+        issues = sr_verify.outputs.get("issues", [])
 
-        # ── Persist conversation turn ─────────────────────
+        # Apply revision if verdict says so
+        if verdict == "revise" and revised_answer:
+            answer = revised_answer
+        elif verdict == "abstain":
+            answer = (
+                "I don't have enough evidence to answer this question reliably. "
+                + (f"Issues: {'; '.join(issues)}" if issues else "")
+            ).strip()
+
+        # Enrich citations with source_type + created_at from evidence
+        ev_map = {e["memory_id"]: e for e in evidence if "memory_id" in e}
+        enriched_citations = []
+        for c in citations:
+            mid = c.get("memory_id", "")
+            ev = ev_map.get(mid, {})
+            enriched_citations.append({
+                "memory_id": mid,
+                "quote": c.get("quote", ""),
+                "source_type": ev.get("source_type", ""),
+                "created_at": ev.get("created_at", ""),
+            })
+
+        # Build evidence response items
+        evidence_out = []
+        for ev in evidence:
+            evidence_out.append({
+                "memory_id": ev.get("memory_id", ""),
+                "summary": ev.get("summary", ""),
+                "snippet": (ev.get("content_text") or ev.get("summary", ""))[:300],
+                "score": ev.get("score", 0.0),
+                "reasons": ev.get("reasons", []),
+            })
+
+        # ── Step 4: Persist conversation turn + citations ─
         turn_id = _new_id()
-        db_repo.insert_conversation_turn(turn_id, user_text, answer, trace_id=trace_id)
+        db_repo.insert_conversation_turn(
+            turn_id, user_text, answer, trace_id=trace_id, verdict=verdict,
+        )
+        db_repo.insert_chat_citations(turn_id, enriched_citations)
 
         db_repo.finish_exec_trace(trace_id, "done")
 
         return ChatResult(
             trace_id=trace_id,
             answer=answer,
-            citations=citations,
+            citations=enriched_citations,
             verdict=verdict,
+            evidence=evidence_out,
             steps=step_results,
             status="ok",
         )
+
+    # ── Evidence builder ──────────────────────────────────
+    def _build_evidence(self, raw_results: list[dict], top_k: int) -> list[dict]:
+        """Fetch content_text for retrieved cards and format as evidence."""
+        # Collect memory_ids from retrieval results
+        memory_ids = [r.get("memory_id") for r in raw_results if r.get("memory_id")]
+        if not memory_ids:
+            return []
+
+        # Fetch full card rows to get content_text + metadata
+        cards_by_id = {}
+        try:
+            card_rows = db_repo.fetch_memory_cards_by_ids(memory_ids[:top_k * 2])
+            for row in card_rows:
+                cards_by_id[row["memory_id"]] = row
+        except Exception:
+            logger.debug("Failed to fetch memory cards for evidence", exc_info=True)
+
+        evidence: list[dict] = []
+        for r in raw_results[:top_k]:
+            mid = r.get("memory_id", "")
+            card = cards_by_id.get(mid, {})
+
+            # Parse metadata_json
+            meta = {}
+            raw_meta = card.get("metadata_json") or card.get("metadata")
+            if raw_meta:
+                if isinstance(raw_meta, str):
+                    try:
+                        meta = json.loads(raw_meta)
+                    except (json.JSONDecodeError, TypeError):
+                        pass
+                elif isinstance(raw_meta, dict):
+                    meta = raw_meta
+
+            content_text = card.get("content_text") or ""
+            summary = r.get("summary") or card.get("summary") or ""
+            snippet = (content_text[:800] if content_text else summary[:800])
+
+            evidence.append({
+                "memory_id": mid,
+                "summary": summary,
+                "content_text": snippet,
+                "source_type": meta.get("source_type", card.get("type", "")),
+                "created_at": card.get("created_at", ""),
+                "score": r.get("final_score", r.get("score", 0.0)),
+                "reasons": r.get("reasons") if isinstance(r.get("reasons"), list)
+                           else ([r.get("reason")] if r.get("reason") else []),
+            })
+
+        return evidence
 
     # ─────────────────────────────────────────────────────
     #  Internal helpers
