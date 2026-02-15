@@ -22,8 +22,40 @@ _model_loaded = False
 _VECTOR_DIM = 512  # ViT-B-32 default
 
 
+_LOCAL_WEIGHTS_NAME = "open_clip_pytorch_model.bin"
+
+
+def _find_local_checkpoint() -> str | None:
+    """Return path to a locally-cached OpenCLIP weights file, or None."""
+    # Direct file in the cache directory
+    direct = os.path.join(_OPENCLIP_CACHE, _LOCAL_WEIGHTS_NAME)
+    if os.path.isfile(direct):
+        return direct
+
+    # Also check for safetensors variant
+    st = os.path.join(_OPENCLIP_CACHE, "open_clip_model.safetensors")
+    if os.path.isfile(st):
+        return st
+
+    # HuggingFace Hub cache structure: blobs/<sha> or snapshots/<rev>/...
+    for root, _dirs, files in os.walk(_OPENCLIP_CACHE):
+        for f in files:
+            if f.endswith((".bin", ".safetensors")) and os.path.getsize(os.path.join(root, f)) > 100_000_000:
+                return os.path.join(root, f)
+
+    return None
+
+
 def _load_model():
-    """Load OpenCLIP model (singleton)."""
+    """Load OpenCLIP model (singleton).
+
+    Loading strategy:
+      1. If a local checkpoint exists in _OPENCLIP_CACHE, create the model
+         architecture without pretrained weights and load the state_dict
+         from the local file.  This avoids any HuggingFace Hub network calls.
+      2. Otherwise, fall back to the standard open_clip download path.
+      3. If everything fails, return None (stub mode).
+    """
     global _model, _preprocess, _tokenizer, _model_loaded, _VECTOR_DIM
     if _model_loaded:
         return _model
@@ -38,10 +70,32 @@ def _load_model():
         model_name = "ViT-B-32"
         pretrained = "laion2b_s34b_b79k"
 
-        logger.info("Loading OpenCLIP model %s/%s (cache=%s)...", model_name, pretrained, _OPENCLIP_CACHE)
-        _model, _, _preprocess = open_clip.create_model_and_transforms(
-            model_name, pretrained=pretrained,
-        )
+        local_ckpt = _find_local_checkpoint()
+
+        if local_ckpt:
+            # ── Local-first: build architecture + load weights from disk ──
+            logger.info(
+                "Loading OpenCLIP %s from local checkpoint %s ...",
+                model_name, local_ckpt,
+            )
+            _model, _, _preprocess = open_clip.create_model_and_transforms(
+                model_name, pretrained="",
+            )
+            state = torch.load(local_ckpt, map_location="cpu", weights_only=True)
+            # Some checkpoints wrap the state_dict under a key
+            if "state_dict" in state:
+                state = state["state_dict"]
+            _model.load_state_dict(state, strict=False)
+        else:
+            # ── Fallback: let open_clip download from HuggingFace Hub ──
+            logger.info(
+                "Loading OpenCLIP model %s/%s (cache=%s)...",
+                model_name, pretrained, _OPENCLIP_CACHE,
+            )
+            _model, _, _preprocess = open_clip.create_model_and_transforms(
+                model_name, pretrained=pretrained,
+            )
+
         _tokenizer = open_clip.get_tokenizer(model_name)
         _model.eval()
 
@@ -75,23 +129,28 @@ async def embed_image(
     blob_id: str = "",
     memory_id: str = "",
     mime: str = "",
+    source_type: str = "file",
+    created_at: str = "",
 ) -> dict:
     """Generate vision embedding and upsert to Qdrant.
 
-    Returns dict with 'vector_ref' key like 'qdrant:vision:<point_id>'.
+    Returns dict with 'vector_ref' key like 'qdrant:vision:<memory_id>'.
     """
     import asyncio
 
+    assert memory_id and len(memory_id) > 0, "memory_id must not be empty"
+
+    if not created_at:
+        created_at = datetime.now(timezone.utc).isoformat()
+
     if _OPENCLIP_MODE == "stub":
-        import hashlib
-        h = hashlib.sha256(image_path.encode()).hexdigest()[:12]
-        return {"vector_ref": f"qdrant:stub:vision:{h}"}
+        return {"vector_ref": f"qdrant:stub:vision:{memory_id}"}
 
     if not os.path.isfile(image_path):
         return {"vector_ref": "", "error": f"File not found: {image_path}"}
 
     result = await asyncio.to_thread(
-        _embed_image_sync, image_path, blob_id, memory_id, mime
+        _embed_image_sync, image_path, blob_id, memory_id, mime, source_type, created_at
     )
     return result
 
@@ -101,13 +160,13 @@ def _embed_image_sync(
     blob_id: str,
     memory_id: str,
     mime: str,
+    source_type: str,
+    created_at: str,
 ) -> dict:
     """Synchronous image embedding + Qdrant upsert."""
     model = _load_model()
     if model is None:
-        import hashlib
-        h = hashlib.sha256(image_path.encode()).hexdigest()[:12]
-        return {"vector_ref": f"qdrant:stub:vision:{h}"}
+        return {"vector_ref": f"qdrant:stub:vision:{memory_id}"}
 
     try:
         import torch
@@ -130,16 +189,17 @@ def _embed_image_sync(
             vector=vector,
             payload={
                 "memory_id": memory_id,
-                "blob_id": blob_id,
                 "modality": "vision",
-                "source_type": "file",
+                "blob_id": blob_id,
                 "mime": mime,
-                "ts": datetime.now(timezone.utc).isoformat(),
+                "source_type": source_type,
+                "created_at": created_at,
             },
+            point_id=memory_id,
         )
 
         vector_ref = f"qdrant:vision:{point_id}"
-        logger.info("Vision embedding upserted: %s (dim=%d)", vector_ref, len(vector))
+        logger.info("[VISION_EMBED] memory_id=%s upserted to Qdrant (dim=%d)", memory_id, len(vector))
         return {"vector_ref": vector_ref}
 
     except Exception as exc:

@@ -15,7 +15,8 @@ class TextEmbedAgent(BasePassiveAgent):
         text = envelope.inputs.get("text", "")
         memory_id = envelope.inputs.get("memory_id", "")
         source_type = envelope.inputs.get("source_type", "file")
-        return await embed_text(text, memory_id=memory_id, source_type=source_type)
+        created_at = envelope.inputs.get("created_at", "")
+        return await embed_text(text, memory_id=memory_id, source_type=source_type, created_at=created_at)
 
 
 registry.register(
@@ -28,6 +29,7 @@ registry.register(
             "text": {"type": "string"},
             "memory_id": {"type": "string"},
             "source_type": {"type": "string"},
+            "created_at": {"type": "string"},
         },
     },
     output_schema={"type": "object", "properties": {"vector_ref": {"type": "string"}}},

@@ -78,6 +78,12 @@ async def _preload_models():
             from app.tools.vision_embed_impl import _load_model as load_clip
             await asyncio.to_thread(load_clip)
             logger.info("OpenCLIP model ready.")
+
+            # Ensure Qdrant vision collection exists
+            from app.tools.vision_embed_impl import _VECTOR_DIM
+            from app.tools.qdrant_client import ensure_collection as _ensure_col
+            _ensure_col("vision", _VECTOR_DIM)
+            logger.info("Qdrant 'vision' collection ready (dim=%d).", _VECTOR_DIM)
         except Exception:
             logger.exception("Failed to preload OpenCLIP")
 
