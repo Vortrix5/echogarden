@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { retrieve, fetchSearchHistory, type RetrieveHit, type SearchHistoryItem } from '../api'
 import CardDetail from '../components/CardDetail'
+import ReasonBadges from '../components/ReasonBadges'
 import { Search, Share2, MessageCircle, Clock, LayoutGrid, List, Image, FileText, Music, Film } from 'lucide-react'
 
 type ViewMode = 'grid' | 'list'
@@ -236,6 +237,7 @@ export default function SearchPage() {
                       {hit.summary || ''}
                     </p>
                     <div className="flex items-center gap-2 mt-2">
+                      <ReasonBadges reasons={hit.reasons} />
                       {hit.source_type && (
                         <span className="text-[10px] text-muted">{hit.source_type}</span>
                       )}

@@ -718,3 +718,59 @@ New/updated tables:
 
 - **conversation_turn** — added `verdict TEXT` column
 - **chat_citation** — `citation_id`, `turn_id`, `memory_id`, `quote`, `span_start`, `span_end`, `created_at`
+
+---
+
+## Phase 8 — Search-first Knowledge OS UI
+
+Phase 8 adds a local web UI (Vite + React + TypeScript + Tailwind) with four surfaces, plus new backend endpoints.
+
+### Quick Start
+
+```bash
+# Start everything (API + UI + dependencies)
+docker compose up --build
+
+# UI opens at:
+open http://127.0.0.1:5173
+
+# API docs still at:
+open http://127.0.0.1:8000/docs
+```
+
+### Workflow
+
+1. **Drop a file** — use the existing ingest endpoint or file watcher
+2. **Home** — see your Daily Digest at `http://127.0.0.1:5173/`
+3. **Search** — go to `/search`, type a query → see ranked results with FTS/semantic/graph badges
+4. **Ask** — go to `/ask`, ask a question → get a grounded answer with citations + evidence
+5. **Graph** — go to `/graph`, search for nodes or click "Explore in Graph" from any card
+
+### UI Pages
+
+| Page | Route | Description |
+|------|-------|-------------|
+| Home | `/` | Daily Digest — recent cards, top entities, actions, clusters |
+| Search | `/search` | Hybrid search with score + reason badges, card preview |
+| Ask | `/ask` | Grounded Q&A with citations, evidence list, trace link, graph |
+| Graph | `/graph` | 2D/3D graph explorer with expand, filter, search |
+
+### New Backend Endpoints
+
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/cards?limit=50&offset=0&source_type=&card_type=&q=` | List/filter/search cards |
+| GET | `/cards/{memory_id}` | Get single card detail |
+| GET | `/digest?window=24h\|7d\|30d&limit=50` | Daily digest payload |
+| GET | `/graph/subgraph?seed=<node_id>&hops=1\|2&limit=200` | Subgraph for visualization |
+| GET | `/graph/search?query=<text>&type=<optional>&limit=20` | Search graph nodes by name |
+| GET | `/graph/neighbors?node_id=<node_id>&hops=1\|2&limit=200` | Node neighbors |
+
+### Local UI Development (without Docker)
+
+```bash
+cd ui
+npm install
+npm run dev
+# Proxies /api → http://localhost:8000
+```

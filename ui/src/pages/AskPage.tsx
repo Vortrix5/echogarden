@@ -8,6 +8,7 @@ import {
   type Evidence
 } from '../api'
 import GraphViewer from '../components/GraphViewer'
+import ReasonBadges from '../components/ReasonBadges'
 
 interface Message {
   role: 'user' | 'assistant'
@@ -239,6 +240,7 @@ export default function AskPage() {
                               {ev.snippet && <p className="text-muted line-clamp-1 mt-0.5">{ev.snippet}</p>}
                             </div>
                             <div className="flex items-center gap-1 shrink-0">
+                              <ReasonBadges reasons={ev.reasons} />
                               <span className="font-mono text-accent">{ev.score.toFixed(2)}</span>
                               {ev.open_url && (
                                 <a
