@@ -12,6 +12,8 @@ services:
       - EG_WHISPER_MODE=${EG_WHISPER_MODE:-local}
       - EG_OPENCLIP_MODE=${EG_OPENCLIP_MODE:-local}
       - EG_CAPTURE_API_KEY=${EG_CAPTURE_API_KEY:-}
+      - EG_OLLAMA_URL=${EG_OLLAMA_URL:-http://ollama:11434}
+      - EG_OLLAMA_MODEL=${EG_OLLAMA_MODEL:-phi3:mini}
     volumes:
       - ./data:/data
       - ${EG_HOST_WATCH_PATH:-./host_watch}:/host_watch:ro
@@ -20,6 +22,15 @@ services:
     depends_on:
       - qdrant
       - tika
+      - ollama
+
+  ollama:
+    image: ollama/ollama:latest
+    volumes:
+      - ollama_data:/root/.ollama
+    ports:
+      - "127.0.0.1:11434:11434"
+    restart: unless-stopped
 
   tika:
     image: apache/tika:2.9.0.0-full
@@ -33,3 +44,6 @@ services:
       - ./data/qdrant:/qdrant/storage
     ports:
       - "127.0.0.1:6333:6333"
+
+volumes:
+  ollama_data:
