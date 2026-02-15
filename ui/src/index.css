@@ -1,0 +1,20 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  * { @apply border-border; }
+  body {
+    @apply bg-surface text-gray-100;
+    font-family: 'Inter', system-ui, -apple-system, sans-serif;
+  }
+}
+
+/* Scrollbar */
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: #2a2d3a; border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: #3a3d4a; }
+
+/* Graph canvas */
+.force-graph-container canvas { border-radius: 0.5rem; }
