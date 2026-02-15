@@ -56,5 +56,6 @@ class ChatResult(BaseModel):
     answer: str = ""
     citations: list[Any] = Field(default_factory=list)
     verdict: str = ""
+    evidence: list[Any] = Field(default_factory=list)
     steps: list[StepResult] = Field(default_factory=list)
     status: str = "ok"
