@@ -16,7 +16,16 @@ class VisionEmbedAgent(BasePassiveAgent):
         blob_id = envelope.inputs.get("blob_id", "")
         memory_id = envelope.inputs.get("memory_id", "")
         mime = envelope.inputs.get("mime", "")
-        return await embed_image(image_path, blob_id=blob_id, memory_id=memory_id, mime=mime)
+        source_type = envelope.inputs.get("source_type", "file")
+        created_at = envelope.inputs.get("created_at", "")
+        return await embed_image(
+            image_path,
+            blob_id=blob_id,
+            memory_id=memory_id,
+            mime=mime,
+            source_type=source_type,
+            created_at=created_at,
+        )
 
 
 registry.register(
@@ -30,6 +39,8 @@ registry.register(
             "blob_id": {"type": "string"},
             "memory_id": {"type": "string"},
             "mime": {"type": "string"},
+            "source_type": {"type": "string"},
+            "created_at": {"type": "string"},
         },
     },
     output_schema={"type": "object", "properties": {"vector_ref": {"type": "string"}}},

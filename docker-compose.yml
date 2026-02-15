@@ -14,8 +14,11 @@ services:
       - EG_CAPTURE_API_KEY=${EG_CAPTURE_API_KEY:-}
       - EG_OLLAMA_URL=${EG_OLLAMA_URL:-http://ollama:11434}
       - EG_OLLAMA_MODEL=${EG_OLLAMA_MODEL:-phi3:mini}
+      - HF_HUB_OFFLINE=1
+      - TRANSFORMERS_OFFLINE=1
     volumes:
       - ./data:/data
+      - ./api/app:/app/app:ro
       - ${EG_HOST_WATCH_PATH:-./host_watch}:/host_watch:ro
     ports:
       - "127.0.0.1:8000:8000"
