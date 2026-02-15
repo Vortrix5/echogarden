@@ -27,7 +27,8 @@ def signals(monkeypatch):
 
     monkeypatch.setattr(service, "_semantic_search", semantic)
     monkeypatch.setattr(
-        service, "expand_from_seeds",
+        service,
+        "expand_from_seeds",
         lambda seeds, hops: [GraphCandidate(memory_id="graph", graph_score=0.6, via_entity_ids=["ent:x"])],
     )
     monkeypatch.setattr(service, "_fetch_cards", lambda ids: {i: cards[i] for i in ids if i in cards})

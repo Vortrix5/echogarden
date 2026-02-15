@@ -48,14 +48,18 @@ def compact(dry_run: bool = True) -> dict:
 
     try:
         # 1. Load all entity nodes
-        rows = conn.execute(
-            "SELECT node_id, node_type, props FROM graph_node WHERE node_id LIKE 'ent:%'"
-        ).fetchall()
+        rows = conn.execute("SELECT node_id, node_type, props FROM graph_node WHERE node_id LIKE 'ent:%'").fetchall()
 
         # Type priority: prefer more specific types over generic ones
         _TYPE_PRIORITY = {
-            "Person": 10, "Org": 9, "Place": 8, "Project": 7,
-            "Technology": 6, "Component": 5, "Topic": 4, "Other": 1,
+            "Person": 10,
+            "Org": 9,
+            "Place": 8,
+            "Project": 7,
+            "Technology": 6,
+            "Component": 5,
+            "Topic": 4,
+            "Other": 1,
         }
 
         # 2. Group by canonical name ONLY (ignoring type differences)
@@ -73,13 +77,15 @@ def compact(dry_run: bool = True) -> dict:
             if not canon:
                 continue
 
-            groups.setdefault(canon, []).append({
-                "node_id": node_id,
-                "node_type": norm_type,
-                "raw_db_type": node_type,
-                "props": props,
-                "canon": canon,
-            })
+            groups.setdefault(canon, []).append(
+                {
+                    "node_id": node_id,
+                    "node_type": norm_type,
+                    "raw_db_type": node_type,
+                    "props": props,
+                    "canon": canon,
+                }
+            )
 
         # 3. Process groups with duplicates
         for canon, nodes in groups.items():
@@ -112,7 +118,10 @@ def compact(dry_run: bool = True) -> dict:
 
             logger.info(
                 "GROUP canon=%r best_type=%s: primary=%s, merging %d duplicates",
-                canon, best_type, primary_id, len(duplicates),
+                canon,
+                best_type,
+                primary_id,
+                len(duplicates),
             )
 
             for dup in duplicates:
@@ -134,7 +143,10 @@ def compact(dry_run: bool = True) -> dict:
                         logger.info(
                             "  %s edge %s: %s.%s -> %s",
                             "WOULD repoint" if dry_run else "Repointed",
-                            edge_id[:12], col, dup_id[:20], primary_id[:20],
+                            edge_id[:12],
+                            col,
+                            dup_id[:20],
+                            primary_id[:20],
                         )
 
                 # Merge props into primary (highest confidence, longest name)
@@ -174,8 +186,9 @@ def compact(dry_run: bool = True) -> dict:
 
 def main():
     parser = argparse.ArgumentParser(description="Compact duplicate entity nodes in the graph.")
-    parser.add_argument("--dry-run", action="store_true", default=False,
-                        help="Preview changes without modifying the database.")
+    parser.add_argument(
+        "--dry-run", action="store_true", default=False, help="Preview changes without modifying the database."
+    )
     args = parser.parse_args()
 
     logger.info("Graph compaction — %s mode", "DRY RUN" if args.dry_run else "LIVE")

@@ -44,10 +44,7 @@ class ToolRegistry:
         )
 
     def list_tools(self) -> list[dict[str, str]]:
-        return [
-            {"name": t.name, "version": t.version, "description": t.description}
-            for t in self._tools.values()
-        ]
+        return [{"name": t.name, "version": t.version, "description": t.description} for t in self._tools.values()]
 
     def get(self, name: str) -> ToolEntry | None:
         return self._tools.get(name)

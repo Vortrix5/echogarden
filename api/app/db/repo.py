@@ -14,6 +14,7 @@ logger = logging.getLogger("echogarden.db.repo")
 
 # ── schema introspection ──────────────────────────────────
 
+
 def _table_columns(conn, table: str) -> list[str]:
     """Return column names for a table."""
     try:
@@ -137,6 +138,7 @@ def insert_exec_edge(
 _MAX_SUMMARY_CHARS = 400
 _MAX_CONTENT_TEXT_CHARS = 200_000
 
+
 # ── memory_card ───────────────────────────────────────────
 def insert_memory_card(
     memory_id: str,
@@ -156,19 +158,19 @@ def insert_memory_card(
     """
     # Enforce summary cap
     if summary and len(summary) > _MAX_SUMMARY_CHARS:
-        summary = summary[:_MAX_SUMMARY_CHARS - 3].rstrip() + "..."
+        summary = summary[: _MAX_SUMMARY_CHARS - 3].rstrip() + "..."
 
     # Enforce content_text cap
     if content_text and len(content_text) > _MAX_CONTENT_TEXT_CHARS:
         content_text = content_text[:_MAX_CONTENT_TEXT_CHARS]
 
     # Prevent summary == content_text
-    if summary and content_text and summary == content_text[:len(summary)]:
+    if summary and content_text and summary == content_text[: len(summary)]:
         cut = content_text[:_MAX_SUMMARY_CHARS]
         for sep in (". ", ".\n"):
             idx = cut.rfind(sep)
             if idx > 30:
-                summary = cut[:idx + 1].strip()
+                summary = cut[: idx + 1].strip()
                 break
 
     # Merge legacy metadata into metadata_json if metadata_json not provided
@@ -253,11 +255,13 @@ def fts_search_memory_cards(query: str, limit: int = 10) -> list[dict[str, Any]]
         ).fetchall()
         results = []
         for r in rows:
-            results.append({
-                "memory_id": r["memory_id"],
-                "summary": r["summary"],
-                "score": r["score"],
-            })
+            results.append(
+                {
+                    "memory_id": r["memory_id"],
+                    "summary": r["summary"],
+                    "score": r["score"],
+                }
+            )
         return results
     except Exception:
         # FTS may fail on empty DB — return empty
@@ -299,9 +303,7 @@ def finish_exec_trace(trace_id: str, status: str) -> None:
 def get_exec_trace(trace_id: str) -> dict[str, Any] | None:
     conn = get_conn()
     try:
-        row = conn.execute(
-            "SELECT * FROM exec_trace WHERE trace_id = ?", (trace_id,)
-        ).fetchone()
+        row = conn.execute("SELECT * FROM exec_trace WHERE trace_id = ?", (trace_id,)).fetchone()
         return dict(row) if row else None
     finally:
         conn.close()
@@ -365,9 +367,7 @@ def get_recent_tool_calls(limit: int = 50) -> list[dict[str, Any]]:
     """Return the most recent tool_call rows."""
     conn = get_conn()
     try:
-        rows = conn.execute(
-            "SELECT * FROM tool_call ORDER BY ts DESC LIMIT ?", (limit,)
-        ).fetchall()
+        rows = conn.execute("SELECT * FROM tool_call ORDER BY ts DESC LIMIT ?", (limit,)).fetchall()
         return [dict(r) for r in rows]
     except Exception:
         return []
@@ -407,7 +407,7 @@ def get_latest_exec_node_for_call(tool_name: str, trace_id: str) -> dict[str, An
                  AND tc.inputs LIKE ?
                ORDER BY tc.ts DESC
                LIMIT 1""",
-            (tool_name, f'%{trace_id}%'),
+            (tool_name, f"%{trace_id}%"),
         ).fetchone()
         return dict(row) if row else None
     except Exception:
@@ -418,6 +418,7 @@ def get_latest_exec_node_for_call(tool_name: str, trace_id: str) -> dict[str, An
 
 # ── Phase 5: hybrid retrieval helpers ─────────────────────
 
+
 def _sanitise_fts_query(raw: str) -> str:
     """Convert a natural-language query into a safe FTS5 MATCH expression.
 
@@ -427,6 +428,7 @@ def _sanitise_fts_query(raw: str) -> str:
     Returns empty string if nothing usable remains.
     """
     import re
+
     # Remove FTS5 special chars
     cleaned = re.sub(r'["\*\:\^\(\)\{\}\?\!]', " ", raw)
     tokens = [t for t in cleaned.split() if t and not re.fullmatch(r"[^\w]+", t)]

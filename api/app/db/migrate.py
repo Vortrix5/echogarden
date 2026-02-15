@@ -18,10 +18,7 @@ _SCHEMA_PHASE8_FILE = _SCHEMA_DIR / "schema_phase8.sql"
 def _safe_add_column(conn, table: str, column: str, col_type: str) -> None:
     """Add a column to a table if it doesn't already exist."""
     try:
-        existing = [
-            row[1]
-            for row in conn.execute(f"PRAGMA table_info({table})").fetchall()
-        ]
+        existing = [row[1] for row in conn.execute(f"PRAGMA table_info({table})").fetchall()]
         if column not in existing:
             conn.execute(f"ALTER TABLE {table} ADD COLUMN {column} {col_type}")
             logger.info("Added column %s.%s", table, column)
@@ -32,12 +29,7 @@ def _safe_add_column(conn, table: str, column: str, col_type: str) -> None:
 def _run_phase6_migration(conn) -> None:
     """Phase 6: ensure memory_card has content_text + metadata_json columns."""
     # Detect memory card table
-    tables = [
-        r[0]
-        for r in conn.execute(
-            "SELECT name FROM sqlite_master WHERE type='table'"
-        ).fetchall()
-    ]
+    tables = [r[0] for r in conn.execute("SELECT name FROM sqlite_master WHERE type='table'").fetchall()]
 
     mc_table = "memory_card"
     if "MEMORY_CARD" in tables:
@@ -50,8 +42,7 @@ def _run_phase6_migration(conn) -> None:
 
     # Ensure type and created_at exist (they should from schema.sql)
     _safe_add_column(conn, mc_table, "type", "TEXT")
-    _safe_add_column(conn, mc_table, "created_at",
-                     "TEXT NOT NULL DEFAULT (datetime('now'))")
+    _safe_add_column(conn, mc_table, "created_at", "TEXT NOT NULL DEFAULT (datetime('now'))")
 
     # Create FTS table if missing
     try:
@@ -88,15 +79,9 @@ def run_migration() -> None:
         _safe_add_column(conn, "conversation_turn", "trace_id", "TEXT")
 
         # Indexes on the new trace_id columns
-        conn.execute(
-            "CREATE INDEX IF NOT EXISTS idx_exec_node_trace ON exec_node(trace_id)"
-        )
-        conn.execute(
-            "CREATE INDEX IF NOT EXISTS idx_exec_edge_trace ON exec_edge(trace_id)"
-        )
-        conn.execute(
-            "CREATE INDEX IF NOT EXISTS idx_conv_turn_trace ON conversation_turn(trace_id)"
-        )
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_exec_node_trace ON exec_node(trace_id)")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_exec_edge_trace ON exec_edge(trace_id)")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_conv_turn_trace ON conversation_turn(trace_id)")
 
         # Phase 6: content_text + metadata_json on memory_card
         _run_phase6_migration(conn)

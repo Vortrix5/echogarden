@@ -15,60 +15,60 @@ import re
 
 _CANONICAL_TYPES: dict[str, str] = {
     # Person
-    "person":       "Person",
-    "people":       "Person",
-    "individual":   "Person",
-    "user":         "Person",
-    "author":       "Person",
-    "speaker":      "Person",
+    "person": "Person",
+    "people": "Person",
+    "individual": "Person",
+    "user": "Person",
+    "author": "Person",
+    "speaker": "Person",
     # Org
-    "org":          "Org",
+    "org": "Org",
     "organization": "Org",
     "organisation": "Org",
-    "company":      "Org",
-    "institution":  "Org",
-    "agency":       "Org",
-    "corporation":  "Org",
-    "team":         "Org",
-    "group":        "Org",
+    "company": "Org",
+    "institution": "Org",
+    "agency": "Org",
+    "corporation": "Org",
+    "team": "Org",
+    "group": "Org",
     # Place
-    "place":        "Place",
-    "location":     "Place",
-    "city":         "Place",
-    "country":      "Place",
-    "region":       "Place",
-    "state":        "Place",
-    "continent":    "Place",
-    "address":      "Place",
+    "place": "Place",
+    "location": "Place",
+    "city": "Place",
+    "country": "Place",
+    "region": "Place",
+    "state": "Place",
+    "continent": "Place",
+    "address": "Place",
     # Project
-    "project":      "Project",
-    "product":      "Project",
-    "app":          "Project",
-    "application":  "Project",
+    "project": "Project",
+    "product": "Project",
+    "app": "Project",
+    "application": "Project",
     # Topic
-    "topic":        "Topic",
-    "subject":      "Topic",
-    "concept":      "Topic",
-    "category":     "Topic",
-    "theme":        "Topic",
+    "topic": "Topic",
+    "subject": "Topic",
+    "concept": "Topic",
+    "category": "Topic",
+    "theme": "Topic",
     # Technology
-    "technology":   "Technology",
-    "tech":         "Technology",
-    "tool":         "Technology",
-    "library":      "Technology",
-    "framework":    "Technology",
-    "language":     "Technology",
-    "platform":     "Technology",
-    "api":          "Technology",
-    "sdk":          "Technology",
+    "technology": "Technology",
+    "tech": "Technology",
+    "tool": "Technology",
+    "library": "Technology",
+    "framework": "Technology",
+    "language": "Technology",
+    "platform": "Technology",
+    "api": "Technology",
+    "sdk": "Technology",
     # Component
-    "component":    "Component",
-    "system":       "Component",
-    "service":      "Component",
-    "module":       "Component",
+    "component": "Component",
+    "system": "Component",
+    "service": "Component",
+    "module": "Component",
     "microservice": "Component",
     # Other — fallback
-    "other":        "Other",
+    "other": "Other",
 }
 
 # Types that are proper-noun-ish — do NOT singularize
@@ -81,14 +81,16 @@ _LEADING_ARTICLES_RE = re.compile(r"^(a|an|the)\s+", re.IGNORECASE)
 _STRIP_PUNCT_RE = re.compile(r"[^\w\s\-']", re.UNICODE)
 
 # Unicode fancy quotes / apostrophes → ASCII
-_UNICODE_APOSTROPHES = str.maketrans({
-    "\u2018": "'",   # '
-    "\u2019": "'",   # '
-    "\u201C": '"',   # "
-    "\u201D": '"',   # "
-    "\u2032": "'",   # ′
-    "\u0060": "'",   # `
-})
+_UNICODE_APOSTROPHES = str.maketrans(
+    {
+        "\u2018": "'",  # '
+        "\u2019": "'",  # '
+        "\u201c": '"',  # "
+        "\u201d": '"',  # "
+        "\u2032": "'",  # ′
+        "\u0060": "'",  # `
+    }
+)
 
 
 def normalize_entity_type(raw_type: str) -> str:

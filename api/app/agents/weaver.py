@@ -31,10 +31,7 @@ def _stub_weave(question: str, evidence: list[dict]) -> dict:
         summary = ev.get("summary", "(no summary)")
         bullets.append(f"- [{mid}] {summary}")
         citations.append({"memory_id": mid, "quote": summary[:120]})
-    answer = (
-        "Here are the most relevant memories I found:\n"
-        + "\n".join(bullets)
-    )
+    answer = "Here are the most relevant memories I found:\n" + "\n".join(bullets)
     return {"answer": answer, "citations": citations}
 
 
@@ -89,10 +86,7 @@ class WeaverAgent(BasePassiveAgent):
                 citations = parsed.get("citations", [])
                 # Validate citation memory_ids against evidence
                 valid_ids = {e.get("memory_id") for e in evidence}
-                validated_citations = [
-                    c for c in citations
-                    if isinstance(c, dict) and c.get("memory_id") in valid_ids
-                ]
+                validated_citations = [c for c in citations if isinstance(c, dict) and c.get("memory_id") in valid_ids]
                 return {
                     "answer": parsed["answer"],
                     "citations": validated_citations[:max_citations],

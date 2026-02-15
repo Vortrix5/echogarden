@@ -78,10 +78,12 @@ def _load_model():
             # ── Local-first: build architecture + load weights from disk ──
             logger.info(
                 "Loading OpenCLIP %s from local checkpoint %s ...",
-                model_name, local_ckpt,
+                model_name,
+                local_ckpt,
             )
             _model, _, _preprocess = open_clip.create_model_and_transforms(
-                model_name, pretrained="",
+                model_name,
+                pretrained="",
             )
             state = torch.load(local_ckpt, map_location="cpu", weights_only=True)
             # Some checkpoints wrap the state_dict under a key
@@ -92,10 +94,13 @@ def _load_model():
             # ── Fallback: let open_clip download from HuggingFace Hub ──
             logger.info(
                 "Loading OpenCLIP model %s/%s (cache=%s)...",
-                model_name, pretrained, _OPENCLIP_CACHE,
+                model_name,
+                pretrained,
+                _OPENCLIP_CACHE,
             )
             _model, _, _preprocess = open_clip.create_model_and_transforms(
-                model_name, pretrained=pretrained,
+                model_name,
+                pretrained=pretrained,
             )
 
         _tokenizer = open_clip.get_tokenizer(model_name)
@@ -123,6 +128,7 @@ def _load_model():
 def _ensure_qdrant_collection():
     """Create the vision collection in Qdrant if missing."""
     from app.tools.qdrant_client import ensure_collection
+
     ensure_collection(_COLLECTION_NAME, _VECTOR_DIM)
 
 
@@ -151,9 +157,7 @@ async def embed_image(
     if not os.path.isfile(image_path):
         return {"vector_ref": "", "error": f"File not found: {image_path}"}
 
-    result = await asyncio.to_thread(
-        _embed_image_sync, image_path, blob_id, memory_id, mime, source_type, created_at
-    )
+    result = await asyncio.to_thread(_embed_image_sync, image_path, blob_id, memory_id, mime, source_type, created_at)
     return result
 
 

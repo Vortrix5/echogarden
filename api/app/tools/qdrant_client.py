@@ -21,6 +21,7 @@ def _url(path: str) -> str:
 
 # ── Collection management ─────────────────────────────────
 
+
 def ensure_collection(name: str, vector_size: int, distance: str = "Cosine") -> None:
     """Create collection if it does not already exist."""
     try:
@@ -52,6 +53,7 @@ def ensure_collection(name: str, vector_size: int, distance: str = "Cosine") -> 
 
 # ── Upsert ────────────────────────────────────────────────
 
+
 def upsert_point(
     collection: str,
     vector: list[float],
@@ -81,6 +83,7 @@ def upsert_point(
 
 # ── Search ────────────────────────────────────────────────
 
+
 def search(
     collection: str,
     vector: list[float],
@@ -109,11 +112,13 @@ def search(
         data = r.json()
         results = []
         for hit in data.get("result", []):
-            results.append({
-                "id": hit["id"],
-                "score": hit["score"],
-                "payload": hit.get("payload", {}),
-            })
+            results.append(
+                {
+                    "id": hit["id"],
+                    "score": hit["score"],
+                    "payload": hit.get("payload", {}),
+                }
+            )
         return results
     except Exception:
         logger.exception("Qdrant search failed on collection '%s'", collection)
@@ -121,6 +126,7 @@ def search(
 
 
 # ── Phase 5: text-vector search for hybrid retrieval ─────
+
 
 def search_text_vectors(
     query: str,

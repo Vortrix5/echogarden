@@ -22,10 +22,7 @@ def summarizer_prompt(content_text: str, title: str | None, max_chars: int = 400
 
 def extractor_system() -> str:
     """System prompt for the extractor."""
-    return (
-        "You are a structured information extraction engine. "
-        "You always return valid JSON and nothing else."
-    )
+    return "You are a structured information extraction engine. You always return valid JSON and nothing else."
 
 
 def extractor_prompt(
@@ -41,15 +38,15 @@ def extractor_prompt(
         f"Text:\n{truncated}\n\n"
         f"Extract structured information from the above text. "
         f"Return STRICT JSON with exactly these keys:\n"
-        f'{{\n'
+        f"{{\n"
         f'  "entities": [  // max {max_entities} items\n'
         f'    {{"name": "string", "type": "Person|Org|Project|Topic|Place|Other", "confidence": 0.0-1.0}}\n'
-        f'  ],\n'
+        f"  ],\n"
         f'  "tags": ["string"],  // max 12 items, short topic tags\n'
         f'  "actions": [  // max 10 items, tasks or action items found\n'
         f'    {{"text": "string", "due": "YYYY-MM-DD or null", "priority": "high|medium|low|null"}}\n'
-        f'  ]\n'
-        f'}}\n\n'
+        f"  ]\n"
+        f"}}\n\n"
         f"Rules:\n"
         f"- Prefer meaningful entities: real people, organizations, projects, topics, places.\n"
         f"- Confidence should reflect how clearly the entity is mentioned.\n"
@@ -69,6 +66,7 @@ def extractor_retry_prompt() -> str:
 
 
 # ── Phase 7: Weaver ──────────────────────────────────────
+
 
 def weaver_system() -> str:
     """System prompt for the grounded weaver."""
@@ -90,12 +88,12 @@ def weaver_prompt(question: str, evidence_block: str, max_citations: int = 8) ->
         f"Evidence:\n{evidence_block}\n\n"
         f"Question: {question}\n\n"
         f"Return a JSON object with exactly these keys:\n"
-        f'{{\n'
+        f"{{\n"
         f'  "answer": "Your grounded answer with inline [memory_id] citations",\n'
         f'  "citations": [\n'
         f'    {{"memory_id": "...", "quote": "exact short quote from evidence"}}\n'
         f"  ]  // max {max_citations} citations\n"
-        f'}}\n\n'
+        f"}}\n\n"
         f"Rules:\n"
         f"- Use ONLY information from the evidence above.\n"
         f"- Every factual claim must cite a memory_id.\n"
@@ -110,6 +108,7 @@ def format_evidence_block(evidence: list[dict], max_chars: int = 400) -> str:
     Limits to top 3 evidence items to keep prompt small and reduce hallucination.
     """
     import os
+
     lines: list[str] = []
     for i, ev in enumerate(evidence[:3], 1):
         mid = ev.get("memory_id", "?")
@@ -126,14 +125,12 @@ def format_evidence_block(evidence: list[dict], max_chars: int = 400) -> str:
         label = os.path.basename(file_path) if file_path else (summary[:40] or mid[:12])
         # Use first max_chars of content, or summary if no content
         snippet = (content[:max_chars] if content else summary)[:max_chars]
-        lines.append(
-            f"[{i}] memory_id={mid} | file={label} | source={source_type} | date={created_at}\n"
-            f"    {snippet}"
-        )
+        lines.append(f"[{i}] memory_id={mid} | file={label} | source={source_type} | date={created_at}\n    {snippet}")
     return "\n\n".join(lines)
 
 
 # ── Phase 7: Verifier ────────────────────────────────────
+
 
 def verifier_system() -> str:
     """System prompt for the verifier."""
@@ -155,11 +152,11 @@ def verifier_prompt(question: str, answer: str, evidence_block: str) -> str:
         f"Question: {question}\n"
         f"Answer to verify: {answer}\n\n"
         f"Return a JSON object with exactly these keys:\n"
-        f'{{\n'
+        f"{{\n"
         f'  "verdict": "pass" or "revise" or "abstain",\n'
         f'  "revised_answer": "corrected answer if verdict=revise, else empty string",\n'
         f'  "issues": ["description of each unsupported claim"]\n'
-        f'}}\n\n'
+        f"}}\n\n"
         f"Rules:\n"
         f"- verdict='pass' if every claim is supported by evidence.\n"
         f"- verdict='revise' if some claims are unsupported but can be removed.\n"

@@ -21,13 +21,15 @@ from app.graph.models import (
 
 def _make_edge_id(edge: GraphEdgeIn) -> str:
     """Deterministic edge_id from (from, type, to, valid_from, valid_to)."""
-    raw = "|".join([
-        edge.from_node_id,
-        edge.edge_type,
-        edge.to_node_id,
-        edge.valid_from or "",
-        edge.valid_to or "",
-    ])
+    raw = "|".join(
+        [
+            edge.from_node_id,
+            edge.edge_type,
+            edge.to_node_id,
+            edge.valid_from or "",
+            edge.valid_to or "",
+        ]
+    )
     return hashlib.sha256(raw.encode()).hexdigest()[:32]
 
 
@@ -208,17 +210,9 @@ class GraphService:
                     collected_edges.append(edge)
 
                     # Determine which end is the "other" node
-                    other = (
-                        edge.to_node_id
-                        if edge.from_node_id in visited_nodes
-                        else edge.from_node_id
-                    )
+                    other = edge.to_node_id if edge.from_node_id in visited_nodes else edge.from_node_id
                     # Build path: extend parent's path
-                    parent = (
-                        edge.from_node_id
-                        if edge.from_node_id in visited_nodes
-                        else edge.to_node_id
-                    )
+                    parent = edge.from_node_id if edge.from_node_id in visited_nodes else edge.to_node_id
                     if other not in visited_nodes:
                         visited_nodes.add(other)
                         next_frontier.append(other)
@@ -234,16 +228,14 @@ class GraphService:
 
             all_node_ids = list(visited_nodes)
             nodes = _fetch_nodes(conn, all_node_ids)
-            path_infos = [
-                PathInfo(target_node_id=tid, via_edge_ids=eids)
-                for tid, eids in paths.items()
-            ]
+            path_infos = [PathInfo(target_node_id=tid, via_edge_ids=eids) for tid, eids in paths.items()]
             return ExpandResponse(nodes=nodes, edges=collected_edges, paths=path_infos)
         finally:
             conn.close()
 
 
 # ── internal helpers ──────────────────────────────────────
+
 
 def _row_to_node(row) -> GraphNodeOut:
     props = row["props"]

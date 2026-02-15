@@ -46,7 +46,13 @@ async def _run_tesseract_tsv(image_path: str) -> tuple[str, float | None]:
     Returns (text, avg_confidence).
     """
     proc = await asyncio.create_subprocess_exec(
-        _TESSERACT_BIN, image_path, "stdout", "--psm", "3", "-c", "tessedit_create_tsv=1",
+        _TESSERACT_BIN,
+        image_path,
+        "stdout",
+        "--psm",
+        "3",
+        "-c",
+        "tessedit_create_tsv=1",
         "tsv",
         stdout=asyncio.subprocess.PIPE,
         stderr=asyncio.subprocess.PIPE,
@@ -92,7 +98,9 @@ async def extract_text(image_path: str) -> dict:
             if text:
                 logger.info(
                     "OCR extracted %d chars (avg_conf=%.1f) from %s",
-                    len(text), avg_confidence or 0, os.path.basename(image_path),
+                    len(text),
+                    avg_confidence or 0,
+                    os.path.basename(image_path),
                 )
                 return _ocr_success(text, avg_confidence)
         except Exception:
@@ -100,13 +108,13 @@ async def extract_text(image_path: str) -> dict:
 
         # Plain stdout mode as fallback
         proc = await asyncio.create_subprocess_exec(
-            _TESSERACT_BIN, image_path, "stdout",
+            _TESSERACT_BIN,
+            image_path,
+            "stdout",
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
         )
-        stdout, stderr = await asyncio.wait_for(
-            proc.communicate(), timeout=_TIMEOUT
-        )
+        stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=_TIMEOUT)
 
         if proc.returncode != 0:
             err_msg = stderr.decode(errors="replace").strip()

@@ -61,6 +61,7 @@ def _load_blip():
             os.environ.pop("TRANSFORMERS_OFFLINE", None)
             try:
                 import huggingface_hub.constants
+
                 huggingface_hub.constants.HF_HUB_OFFLINE = False
             except Exception:
                 pass
@@ -140,7 +141,8 @@ def _caption_with_blip(image_path: str) -> dict | None:
 
         logger.info(
             "BLIP caption for %s: %s",
-            os.path.basename(image_path), best_caption[:120],
+            os.path.basename(image_path),
+            best_caption[:120],
         )
         return {
             "caption": best_caption[:_MAX_CAPTION_LEN],
@@ -150,39 +152,115 @@ def _caption_with_blip(image_path: str) -> dict | None:
         logger.warning("BLIP caption failed", exc_info=True)
         return None
 
+
 # ── Zero-shot label sets ──────────────────────────────────
 
 _SUBJECT_LABELS = [
     # Animals
-    "dog", "cat", "bird", "fish", "horse", "cow", "sheep", "rabbit",
-    "deer", "bear", "lion", "tiger", "elephant", "monkey", "insect",
-    "butterfly", "snake", "frog", "turtle", "hamster", "parrot",
+    "dog",
+    "cat",
+    "bird",
+    "fish",
+    "horse",
+    "cow",
+    "sheep",
+    "rabbit",
+    "deer",
+    "bear",
+    "lion",
+    "tiger",
+    "elephant",
+    "monkey",
+    "insect",
+    "butterfly",
+    "snake",
+    "frog",
+    "turtle",
+    "hamster",
+    "parrot",
     # People & activities
-    "person", "people", "child", "baby", "man", "woman", "group of people",
+    "person",
+    "people",
+    "child",
+    "baby",
+    "man",
+    "woman",
+    "group of people",
     # Vehicles
-    "car", "truck", "bicycle", "motorcycle", "airplane", "boat", "train", "bus",
+    "car",
+    "truck",
+    "bicycle",
+    "motorcycle",
+    "airplane",
+    "boat",
+    "train",
+    "bus",
     # Nature
-    "flower", "tree", "mountain", "ocean", "beach", "river", "lake",
-    "forest", "garden", "sunset", "sky", "clouds",
+    "flower",
+    "tree",
+    "mountain",
+    "ocean",
+    "beach",
+    "river",
+    "lake",
+    "forest",
+    "garden",
+    "sunset",
+    "sky",
+    "clouds",
     # Built environment
-    "house", "building", "bridge", "road", "city skyline", "office",
-    "church", "castle", "skyscraper", "street",
+    "house",
+    "building",
+    "bridge",
+    "road",
+    "city skyline",
+    "office",
+    "church",
+    "castle",
+    "skyscraper",
+    "street",
     # Objects
-    "food", "book", "computer", "phone", "furniture", "toy",
-    "musical instrument", "sports equipment", "artwork", "sculpture",
+    "food",
+    "book",
+    "computer",
+    "phone",
+    "furniture",
+    "toy",
+    "musical instrument",
+    "sports equipment",
+    "artwork",
+    "sculpture",
     # Documents / text
-    "document", "screenshot", "diagram", "chart", "map", "handwriting",
-    "whiteboard", "presentation slide", "receipt", "form",
+    "document",
+    "screenshot",
+    "diagram",
+    "chart",
+    "map",
+    "handwriting",
+    "whiteboard",
+    "presentation slide",
+    "receipt",
+    "form",
 ]
 
 _SCENE_LABELS = [
-    "indoors", "outdoors", "close-up", "aerial view",
-    "daytime", "nighttime", "underwater",
+    "indoors",
+    "outdoors",
+    "close-up",
+    "aerial view",
+    "daytime",
+    "nighttime",
+    "underwater",
 ]
 
 _STYLE_LABELS = [
-    "photograph", "illustration", "painting", "sketch",
-    "digital art", "meme", "infographic",
+    "photograph",
+    "illustration",
+    "painting",
+    "sketch",
+    "digital art",
+    "meme",
+    "infographic",
 ]
 
 
@@ -258,9 +336,7 @@ def _caption_with_clip(image_path: str) -> dict | None:
         # Collect detected subjects with confidence (top-N above threshold)
         _MIN_ENTITY_SCORE = 0.20
         detected_subjects = [
-            {"name": label, "confidence": round(score, 3)}
-            for label, score in subjects
-            if score >= _MIN_ENTITY_SCORE
+            {"name": label, "confidence": round(score, 3)} for label, score in subjects if score >= _MIN_ENTITY_SCORE
         ][:5]  # max 5 subjects
 
         # Scene and style as tags
@@ -270,7 +346,9 @@ def _caption_with_clip(image_path: str) -> dict | None:
 
         logger.info(
             "CLIP caption for %s (score=%.3f): %s | subjects=%s",
-            os.path.basename(image_path), top_subject_score, caption,
+            os.path.basename(image_path),
+            top_subject_score,
+            caption,
             [s["name"] for s in detected_subjects],
         )
         return {

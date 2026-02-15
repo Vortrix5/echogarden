@@ -101,10 +101,7 @@ def build_ingest_steps(
     if pipeline == PipelineType.ocr:
         # Image pipeline is handled directly by the orchestrator
         # via _ingest_image() with parallel OCR + VisionEmbed branches.
-        raise ValueError(
-            "Image pipeline uses Orchestrator._ingest_image(), "
-            "not build_ingest_steps()"
-        )
+        raise ValueError("Image pipeline uses Orchestrator._ingest_image(), not build_ingest_steps()")
 
     # asr
     return [

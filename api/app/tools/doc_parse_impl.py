@@ -69,7 +69,9 @@ async def parse_document(path: str, blob_id: str = "") -> dict:
 
         logger.info(
             "Tika parsed %s — %d chars, detected mime=%s",
-            os.path.basename(path), len(extracted_text), detected_mime,
+            os.path.basename(path),
+            len(extracted_text),
+            detected_mime,
         )
         return {"content_text": extracted_text, "mime": detected_mime}
 

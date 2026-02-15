@@ -38,11 +38,16 @@ async def _handle_ingest_blob(payload: dict) -> None:
     fname = os.path.basename(path)
 
     from app.orchestrator.router import choose_pipeline
+
     pipeline = choose_pipeline(mime, path)
 
     logger.info(
         "[PROCESS] %s — mime=%s, %s, pipeline=%s, blob=%s",
-        fname, mime, _format_size(size_bytes), pipeline.value, blob_id[:12],
+        fname,
+        mime,
+        _format_size(size_bytes),
+        pipeline.value,
+        blob_id[:12],
     )
 
     result = await _orch.ingest_blob(
@@ -92,7 +97,9 @@ async def _handle_ingest_capture(payload: dict) -> None:
 
     logger.info(
         "[CAPTURE] Embedding text for memory=%s type=%s (%d chars)",
-        memory_id[:12], card_type, len(text),
+        memory_id[:12],
+        card_type,
+        len(text),
     )
 
     # Run text embedding via the tool registry
@@ -117,6 +124,7 @@ async def _handle_ingest_capture(payload: dict) -> None:
         vector_ref = result.outputs.get("vector_ref", "")
         if vector_ref:
             from app.db import repo as db_repo
+
             db_repo.insert_embedding(memory_id, modality="text", vector_ref=vector_ref)
             logger.info("[CAPTURE] Embedding stored: %s for memory=%s", vector_ref[:30], memory_id[:12])
     else:
@@ -147,15 +155,15 @@ async def worker_loop() -> None:
 
             logger.info(
                 "[CLAIM]  Job #%d — id=%s type=%s",
-                jobs_processed, job_id[:12], job_type,
+                jobs_processed,
+                job_id[:12],
+                job_type,
             )
 
             handler = _JOB_HANDLERS.get(job_type)
             if handler is None:
                 logger.warning("[SKIP]   Unknown job type: %s", job_type)
-                await asyncio.to_thread(
-                    complete_job, job_id, f"Unknown job type: {job_type}"
-                )
+                await asyncio.to_thread(complete_job, job_id, f"Unknown job type: {job_type}")
                 continue
 
             try:

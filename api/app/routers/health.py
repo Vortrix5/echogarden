@@ -32,6 +32,7 @@ async def healthz():
     llm_status = "unavailable"
     try:
         from app.llm.ollama_client import ping_ollama
+
         if await ping_ollama():
             llm_status = "ok"
     except Exception:

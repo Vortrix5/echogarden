@@ -17,16 +17,12 @@ router = APIRouter(tags=["debug"])
 # JSON endpoints
 # ──────────────────────────────────────────────────────────
 
+
 @router.get("/debug/tables")
 def table_counts() -> dict[str, int]:
     """Row counts for every table."""
     db = get_conn()
-    tables = [
-        r[0]
-        for r in db.execute(
-            "SELECT name FROM sqlite_master WHERE type='table' ORDER BY name"
-        ).fetchall()
-    ]
+    tables = [r[0] for r in db.execute("SELECT name FROM sqlite_master WHERE type='table' ORDER BY name").fetchall()]
     counts: dict[str, int] = {}
     for t in tables:
         try:
@@ -55,9 +51,7 @@ def list_memory_cards() -> list[dict]:
     elif has_metadata:
         select_cols.append("metadata")
 
-    rows = db.execute(
-        f"SELECT {', '.join(select_cols)} FROM memory_card ORDER BY created_at DESC LIMIT 50"
-    ).fetchall()
+    rows = db.execute(f"SELECT {', '.join(select_cols)} FROM memory_card ORDER BY created_at DESC LIMIT 50").fetchall()
     out = []
     for r in rows:
         row_dict = {select_cols[i]: r[i] for i in range(len(select_cols))}
@@ -69,18 +63,20 @@ def list_memory_cards() -> list[dict]:
         summary = row_dict.get("summary", "") or ""
         content_text = row_dict.get("content_text", "") or ""
 
-        out.append({
-            "id": row_dict["memory_id"],
-            "card_type": row_dict.get("type", ""),
-            "summary": summary[:200],
-            "summary_len": len(summary),
-            "content_text_len": len(content_text),
-            "has_content_text": bool(content_text),
-            "entities_count": len(meta.get("entities", [])),
-            "tags": meta.get("tags", []),
-            "metadata": meta,
-            "created_at": row_dict.get("created_at", ""),
-        })
+        out.append(
+            {
+                "id": row_dict["memory_id"],
+                "card_type": row_dict.get("type", ""),
+                "summary": summary[:200],
+                "summary_len": len(summary),
+                "content_text_len": len(content_text),
+                "has_content_text": bool(content_text),
+                "entities_count": len(meta.get("entities", [])),
+                "tags": meta.get("tags", []),
+                "metadata": meta,
+                "created_at": row_dict.get("created_at", ""),
+            }
+        )
     return out
 
 
@@ -97,26 +93,18 @@ def list_sources() -> list[dict]:
 def list_blobs() -> list[dict]:
     db = get_conn()
     rows = db.execute(
-        "SELECT blob_id, sha256, size_bytes, path, mime, created_ts "
-        "FROM blob ORDER BY created_ts DESC LIMIT 50"
+        "SELECT blob_id, sha256, size_bytes, path, mime, created_ts FROM blob ORDER BY created_ts DESC LIMIT 50"
     ).fetchall()
     return [
-        {"id": r[0], "sha256": r[1], "size_bytes": r[2], "path": r[3], "mime": r[4], "created_at": r[5]}
-        for r in rows
+        {"id": r[0], "sha256": r[1], "size_bytes": r[2], "path": r[3], "mime": r[4], "created_at": r[5]} for r in rows
     ]
 
 
 @router.get("/debug/embeddings")
 def list_embeddings() -> list[dict]:
     db = get_conn()
-    rows = db.execute(
-        "SELECT embedding_id, memory_id, modality, vector_ref "
-        "FROM embedding LIMIT 50"
-    ).fetchall()
-    return [
-        {"id": r[0], "memory_id": r[1], "modality": r[2], "vector_ref": r[3]}
-        for r in rows
-    ]
+    rows = db.execute("SELECT embedding_id, memory_id, modality, vector_ref FROM embedding LIMIT 50").fetchall()
+    return [{"id": r[0], "memory_id": r[1], "modality": r[2], "vector_ref": r[3]} for r in rows]
 
 
 @router.get("/debug/graph")
@@ -124,9 +112,7 @@ def get_graph() -> dict[str, Any]:
     """Return nodes + edges for visualization."""
     db = get_conn()
     nodes_raw = db.execute("SELECT node_id, node_type, props FROM graph_node").fetchall()
-    edges_raw = db.execute(
-        "SELECT from_node_id, to_node_id, edge_type, weight FROM graph_edge"
-    ).fetchall()
+    edges_raw = db.execute("SELECT from_node_id, to_node_id, edge_type, weight FROM graph_edge").fetchall()
 
     nodes = []
     for r in nodes_raw:
@@ -136,12 +122,14 @@ def get_graph() -> dict[str, Any]:
 
     edges = []
     for r in edges_raw:
-        edges.append({
-            "source": r[0],
-            "target": r[1],
-            "rel_type": r[2] or "related",
-            "weight": r[3] if r[3] is not None else 1.0,
-        })
+        edges.append(
+            {
+                "source": r[0],
+                "target": r[1],
+                "rel_type": r[2] or "related",
+                "weight": r[3] if r[3] is not None else 1.0,
+            }
+        )
 
     return {"nodes": nodes, "edges": edges}
 
@@ -149,22 +137,15 @@ def get_graph() -> dict[str, Any]:
 @router.get("/debug/tool_calls")
 def list_tool_calls() -> list[dict]:
     db = get_conn()
-    rows = db.execute(
-        "SELECT call_id, tool_name, status, ts FROM tool_call "
-        "ORDER BY ts DESC LIMIT 50"
-    ).fetchall()
-    return [
-        {"id": r[0], "tool_name": r[1], "status": r[2], "created_at": r[3]}
-        for r in rows
-    ]
+    rows = db.execute("SELECT call_id, tool_name, status, ts FROM tool_call ORDER BY ts DESC LIMIT 50").fetchall()
+    return [{"id": r[0], "tool_name": r[1], "status": r[2], "created_at": r[3]} for r in rows]
 
 
 @router.get("/debug/exec_traces")
 def list_exec_traces() -> list[dict]:
     db = get_conn()
     rows = db.execute(
-        "SELECT trace_id, status, metadata_json, started_ts FROM exec_trace "
-        "ORDER BY started_ts DESC LIMIT 50"
+        "SELECT trace_id, status, metadata_json, started_ts FROM exec_trace ORDER BY started_ts DESC LIMIT 50"
     ).fetchall()
     out = []
     for r in rows:
@@ -196,10 +177,12 @@ def qdrant_info() -> dict[str, Any]:
                 if scroll_resp.status_code == 200:
                     pts = scroll_resp.json().get("result", {}).get("points", [])
                     for p in pts:
-                        points.append({
-                            "id": p.get("id"),
-                            "payload": p.get("payload", {}),
-                        })
+                        points.append(
+                            {
+                                "id": p.get("id"),
+                                "payload": p.get("payload", {}),
+                            }
+                        )
                 result[coll] = {
                     "status": info.get("status"),
                     "points_count": info.get("points_count", 0),
@@ -239,9 +222,7 @@ def phase6_summary_stats() -> dict[str, Any]:
     has_content = "content_text" in cols
     has_meta_json = "metadata_json" in cols
 
-    rows = db.execute(
-        "SELECT memory_id, summary FROM memory_card ORDER BY created_at DESC LIMIT 5"
-    ).fetchall()
+    rows = db.execute("SELECT memory_id, summary FROM memory_card ORDER BY created_at DESC LIMIT 5").fetchall()
     cards = []
     for r in rows:
         entry: dict[str, Any] = {
@@ -270,9 +251,7 @@ def phase6_summary_stats() -> dict[str, Any]:
     # Count graph nodes per trace_id
     node_counts = []
     try:
-        trace_rows = db.execute(
-            "SELECT trace_id FROM exec_trace ORDER BY started_ts DESC LIMIT 5"
-        ).fetchall()
+        trace_rows = db.execute("SELECT trace_id FROM exec_trace ORDER BY started_ts DESC LIMIT 5").fetchall()
         for tr in trace_rows:
             tid = tr[0]
             count = db.execute(
@@ -280,12 +259,14 @@ def phase6_summary_stats() -> dict[str, Any]:
                    FROM graph_node gn
                    JOIN graph_edge ge ON ge.to_node_id = gn.node_id
                    WHERE ge.provenance LIKE ?""",
-                (f'%{tid}%',),
+                (f"%{tid}%",),
             ).fetchone()
-            node_counts.append({
-                "trace_id": tid[:12],
-                "graph_nodes": count[0] if count else 0,
-            })
+            node_counts.append(
+                {
+                    "trace_id": tid[:12],
+                    "graph_nodes": count[0] if count else 0,
+                }
+            )
     except Exception:
         pass
 
@@ -300,6 +281,7 @@ def phase6_summary_stats() -> dict[str, Any]:
 # ──────────────────────────────────────────────────────────
 # Visual dashboard (single HTML page)
 # ──────────────────────────────────────────────────────────
+
 
 @router.get("/debug", response_class=HTMLResponse)
 def debug_dashboard() -> str:

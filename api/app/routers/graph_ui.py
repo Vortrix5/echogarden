@@ -18,6 +18,7 @@ _svc = GraphService()
 
 # ── Shared UI-friendly node/edge format ──────────────────
 
+
 def _ui_node(row) -> dict:
     """Convert a graph_node row to the UI format with short labels."""
     props = row["props"]
@@ -59,6 +60,7 @@ def _ui_edge(row) -> dict:
 
 
 # ── GET /graph/subgraph ──────────────────────────────────
+
 
 @router.get("/subgraph")
 async def subgraph(
@@ -109,6 +111,7 @@ async def subgraph(
 
 # ── GET /graph/search ────────────────────────────────────
 
+
 @router.get("/search")
 async def graph_search(
     query: str = Query(..., min_length=1),
@@ -148,6 +151,7 @@ async def graph_search(
 
 
 # ── GET /graph/neighbors ─────────────────────────────────
+
 
 @router.get("/neighbors")
 async def graph_neighbors(
@@ -194,6 +198,7 @@ async def graph_neighbors(
 
 
 # ── helpers ──────────────────────────────────────────────
+
 
 def _fetch_ui_nodes(conn, node_ids: list[str]) -> list[dict]:
     if not node_ids:

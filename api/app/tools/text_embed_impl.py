@@ -51,12 +51,11 @@ def _load_model():
             # Force offline — prevents HF Hub network calls that fail in Docker
             os.environ["HF_HUB_OFFLINE"] = "1"
             os.environ["TRANSFORMERS_OFFLINE"] = "1"
-            logger.info(
-                "Model cache found at %s — loading in offline mode", model_dir
-            )
+            logger.info("Model cache found at %s — loading in offline mode", model_dir)
 
-        logger.info("Loading sentence-transformers model '%s' (cache=%s, offline=%s)...",
-                     _MODEL_NAME, _ST_CACHE, local_only)
+        logger.info(
+            "Loading sentence-transformers model '%s' (cache=%s, offline=%s)...", _MODEL_NAME, _ST_CACHE, local_only
+        )
         _model = SentenceTransformer(
             _MODEL_NAME,
             cache_folder=_ST_CACHE,
@@ -79,6 +78,7 @@ def _load_model():
 def _ensure_qdrant_collection():
     """Create the text collection in Qdrant if missing."""
     from app.tools.qdrant_client import ensure_collection
+
     ensure_collection(_COLLECTION_NAME, _VECTOR_DIM)
 
 
@@ -111,6 +111,7 @@ def _embed_text_sync(text: str, memory_id: str, source_type: str, created_at: st
     model = _load_model()
     if model is None:
         import hashlib
+
         h = hashlib.sha256(text.encode()).hexdigest()[:12]
         return {"vector_ref": f"qdrant:stub:text:{h}"}
 
@@ -144,5 +145,3 @@ def _embed_text_sync(text: str, memory_id: str, source_type: str, created_at: st
     except Exception as exc:
         logger.exception("Text embedding failed")
         return {"vector_ref": "", "error": str(exc)}
-
-

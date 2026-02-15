@@ -16,6 +16,7 @@ class PipelineType(str, Enum):
 
 class ToolStep(BaseModel):
     """One step in an orchestration plan."""
+
     tool_name: str
     intent: str
     inputs: dict[str, Any] = Field(default_factory=dict)
@@ -25,6 +26,7 @@ class ToolStep(BaseModel):
 
 class StepResult(BaseModel):
     """Result of a single orchestrated tool step."""
+
     tool_name: str
     call_id: str
     exec_node_id: str
@@ -36,6 +38,7 @@ class StepResult(BaseModel):
 
 class IngestResult(BaseModel):
     """Result of the full ingestion pipeline."""
+
     trace_id: str
     pipeline: str
     memory_id: str | None = None
@@ -45,6 +48,7 @@ class IngestResult(BaseModel):
 
 class ChatResult(BaseModel):
     """Result of the full chat pipeline."""
+
     trace_id: str
     answer: str = ""
     citations: list[Any] = Field(default_factory=list)

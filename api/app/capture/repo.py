@@ -22,17 +22,13 @@ def _new_id() -> str:
 def get_file_state(path: str) -> dict[str, Any] | None:
     conn = get_conn()
     try:
-        row = conn.execute(
-            "SELECT * FROM file_state WHERE path = ?", (path,)
-        ).fetchone()
+        row = conn.execute("SELECT * FROM file_state WHERE path = ?", (path,)).fetchone()
         return dict(row) if row else None
     finally:
         conn.close()
 
 
-def upsert_file_state(
-    path: str, mtime_ns: int, size_bytes: int, sha256: str
-) -> None:
+def upsert_file_state(path: str, mtime_ns: int, size_bytes: int, sha256: str) -> None:
     conn = get_conn()
     try:
         conn.execute(
@@ -55,9 +51,7 @@ def upsert_source(uri: str, source_type: str = "filesystem") -> str:
     """Insert or return existing source_id for the given URI."""
     conn = get_conn()
     try:
-        row = conn.execute(
-            "SELECT source_id FROM source WHERE uri = ?", (uri,)
-        ).fetchone()
+        row = conn.execute("SELECT source_id FROM source WHERE uri = ?", (uri,)).fetchone()
         if row:
             return row["source_id"]
         sid = _new_id()
@@ -181,9 +175,7 @@ def count_jobs(status: str | None = None) -> int:
     conn = get_conn()
     try:
         if status:
-            row = conn.execute(
-                "SELECT COUNT(*) AS cnt FROM jobs WHERE status = ?", (status,)
-            ).fetchone()
+            row = conn.execute("SELECT COUNT(*) AS cnt FROM jobs WHERE status = ?", (status,)).fetchone()
         else:
             row = conn.execute("SELECT COUNT(*) AS cnt FROM jobs").fetchone()
         return row["cnt"] if row else 0
@@ -191,9 +183,7 @@ def count_jobs(status: str | None = None) -> int:
         conn.close()
 
 
-def list_jobs(
-    status: str | None = None, limit: int = 50
-) -> list[dict[str, Any]]:
+def list_jobs(status: str | None = None, limit: int = 50) -> list[dict[str, Any]]:
     conn = get_conn()
     try:
         if status:

@@ -42,6 +42,7 @@ def _parse_json(raw: str) -> dict | None:
 
 # ── Phase 7 — grounded weaver ────────────────────────────
 
+
 async def weave_with_llm(question: str, evidence: list[dict]) -> dict:
     """Use the LLM to produce a grounded answer with citations.
 
@@ -59,8 +60,7 @@ async def weave_with_llm(question: str, evidence: list[dict]) -> dict:
             # Validate citation memory_ids
             valid_ids = {e.get("memory_id") for e in evidence}
             citations = [
-                c for c in parsed.get("citations", [])
-                if isinstance(c, dict) and c.get("memory_id") in valid_ids
+                c for c in parsed.get("citations", []) if isinstance(c, dict) and c.get("memory_id") in valid_ids
             ]
             return {
                 "answer": parsed["answer"],
@@ -94,11 +94,17 @@ def _stub_weave(question: str, evidence: list[dict]) -> dict:
             continue
         # Skip garbled / unusable summaries
         lower = summary.lower()
-        if any(phrase in lower for phrase in (
-            "cannot be summarized", "garbled", "encoded data",
-            "does not form coherent", "lacks meaningful content",
-            "it cannot be summarized",
-        )):
+        if any(
+            phrase in lower
+            for phrase in (
+                "cannot be summarized",
+                "garbled",
+                "encoded data",
+                "does not form coherent",
+                "lacks meaningful content",
+                "it cannot be summarized",
+            )
+        ):
             continue
         # Derive a human label
         file_path = ev.get("file_path") or ""
@@ -109,7 +115,7 @@ def _stub_weave(question: str, evidence: list[dict]) -> dict:
         label = _os.path.basename(file_path) if file_path else (summary[:40])
 
         # Normalize whitespace (newlines, multi-spaces) to single space
-        clean = _re.sub(r'\s+', ' ', summary).strip()
+        clean = _re.sub(r"\s+", " ", summary).strip()
 
         fragments.append(f"[{label}] {clean}")
         citations.append({"memory_id": mid, "quote": summary[:120]})
@@ -119,6 +125,7 @@ def _stub_weave(question: str, evidence: list[dict]) -> dict:
 
 
 # ── Phase 7 — grounded verifier ──────────────────────────
+
 
 async def verify_with_llm(question: str, answer: str, evidence: list[dict]) -> dict:
     """Use the LLM to verify groundedness.

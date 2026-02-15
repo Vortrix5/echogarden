@@ -10,8 +10,15 @@ from __future__ import annotations
 import re
 
 _OCR_FAILURE_TOKENS = {
-    "error", "tesseract", "exception", "could not", "failed",
-    "ocr error", "ocr timeout", "not installed", "file not found",
+    "error",
+    "tesseract",
+    "exception",
+    "could not",
+    "failed",
+    "ocr error",
+    "ocr timeout",
+    "not installed",
+    "file not found",
 }
 
 _REPEATED_CHAR_RE = re.compile(r"(.)\1{4,}")  # same char 5+ times
@@ -66,9 +73,7 @@ def is_meaningful_ocr(
             return False
 
     # Starts with error marker brackets
-    if stripped.startswith("[") and any(
-        stripped.startswith(f"[{t}") for t in ("OCR", "File", "Tesseract", "Error")
-    ):
+    if stripped.startswith("[") and any(stripped.startswith(f"[{t}") for t in ("OCR", "File", "Tesseract", "Error")):
         return False
 
     # Alpha ratio
@@ -78,9 +83,7 @@ def is_meaningful_ocr(
         return False
 
     # Garbage ratio — catch strings full of |, /, \, ~, etc.
-    garbage_count = sum(
-        1 for c in stripped if not c.isalnum() and not c.isspace()
-    )
+    garbage_count = sum(1 for c in stripped if not c.isalnum() and not c.isspace())
     if total > 0 and (garbage_count / total) > max_garbage_ratio:
         return False
 

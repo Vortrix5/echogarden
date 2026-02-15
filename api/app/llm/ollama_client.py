@@ -12,7 +12,6 @@ from app.core.config import EG_OLLAMA_TIMEOUT as _OLLAMA_TIMEOUT
 logger = logging.getLogger("echogarden.llm.ollama")
 
 
-
 class LLMUnavailableError(Exception):
     """Raised when the LLM backend is unreachable."""
 

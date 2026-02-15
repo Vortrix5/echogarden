@@ -28,9 +28,7 @@ EG_DEBUG: bool = os.environ.get("EG_DEBUG", "").lower() in ("1", "true", "yes")
 EG_CAPTURE_API_KEY: str = os.environ.get("EG_CAPTURE_API_KEY", "")
 
 # Folder capture
-EG_WATCH_ROOTS: list[str] = [
-    r.strip() for r in os.environ.get("EG_WATCH_ROOTS", "/host_watch").split(",") if r.strip()
-]
+EG_WATCH_ROOTS: list[str] = [r.strip() for r in os.environ.get("EG_WATCH_ROOTS", "/host_watch").split(",") if r.strip()]
 EG_POLL_INTERVAL: float = float(os.environ.get("EG_POLL_INTERVAL", "2"))
 # Larger files still get a blob and a placeholder card, but their content is not read.
 EG_MAX_FILE_MB: float = float(os.environ.get("EG_MAX_FILE_MB", "20"))

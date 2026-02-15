@@ -59,9 +59,7 @@ async def hybrid_retrieve(req: RetrieveRequest) -> RetrieveResponse:
     candidates: dict[str, _Candidate] = {}
 
     # ── 1.  FTS ──────────────────────────────────────────
-    fts_hits = await asyncio.to_thread(
-        _fts_search, req.query, req.fts_k, req.time_min, req.time_max, req.source_types
-    )
+    fts_hits = await asyncio.to_thread(_fts_search, req.query, req.fts_k, req.time_min, req.time_max, req.source_types)
     for mid, score in fts_hits:
         _ensure(candidates, mid).fts_score = score
         _ensure(candidates, mid).reasons.add("fts_match")
@@ -78,9 +76,7 @@ async def hybrid_retrieve(req: RetrieveRequest) -> RetrieveResponse:
         # Pick seed_k best candidates so far by preliminary score
         seeds = _top_seed_ids(candidates, req.seed_k)
         if seeds:
-            graph_hits = await asyncio.to_thread(
-                expand_from_seeds, seeds, req.hops
-            )
+            graph_hits = await asyncio.to_thread(expand_from_seeds, seeds, req.hops)
             for gc in graph_hits:
                 c = _ensure(candidates, gc.memory_id)
                 if gc.graph_score > c.graph_score:
@@ -138,7 +134,11 @@ async def hybrid_retrieve(req: RetrieveRequest) -> RetrieveResponse:
         meta: dict[str, Any] = {}
         if meta_raw:
             try:
-                meta = json.loads(meta_raw) if isinstance(meta_raw, str) else (meta_raw if isinstance(meta_raw, dict) else {})
+                meta = (
+                    json.loads(meta_raw)
+                    if isinstance(meta_raw, str)
+                    else (meta_raw if isinstance(meta_raw, dict) else {})
+                )
             except Exception:
                 meta = {}
         blob_id = meta.get("blob_id", "")
@@ -148,6 +148,7 @@ async def hybrid_retrieve(req: RetrieveRequest) -> RetrieveResponse:
         # Resolve mime from blob table if missing
         if blob_id and not mime:
             from app.db.conn import get_conn as _gc
+
             _cx = _gc()
             try:
                 _br = _cx.execute("SELECT mime FROM blob WHERE blob_id = ?", (blob_id,)).fetchone()
@@ -157,8 +158,7 @@ async def hybrid_retrieve(req: RetrieveRequest) -> RetrieveResponse:
                 _cx.close()
         title = _card_title(card.get("summary"), file_path, url, mid)
         media_url = f"/api/blobs/{blob_id}" if blob_id else ""
-        thumb_url = (f"/api/blobs/{blob_id}/thumb?w=320&h=320"
-                     if blob_id and mime.startswith("image/") else "")
+        thumb_url = f"/api/blobs/{blob_id}/thumb?w=320&h=320" if blob_id and mime.startswith("image/") else ""
         open_url = f"/api/cards/{mid}/open" if (blob_id or file_path) else ""
 
         results.append(
@@ -222,10 +222,7 @@ def _ensure(candidates: dict[str, _Candidate], mid: str) -> _Candidate:
 
 def _top_seed_ids(candidates: dict[str, _Candidate], k: int) -> list[str]:
     """Return top-k memory_ids ranked by preliminary (sem + fts) score."""
-    scored = [
-        (mid, c.semantic_score * W_SEMANTIC + c.fts_score * W_FTS)
-        for mid, c in candidates.items()
-    ]
+    scored = [(mid, c.semantic_score * W_SEMANTIC + c.fts_score * W_FTS) for mid, c in candidates.items()]
     scored.sort(key=lambda t: t[1], reverse=True)
     return [mid for mid, _ in scored[:k]]
 
@@ -315,6 +312,7 @@ def _card_title(summary: str | None, file_path: str, url: str, mid: str) -> str:
         return os.path.basename(file_path)
     if url:
         from urllib.parse import urlparse
+
         try:
             host = urlparse(url).hostname or url[:40]
             return host

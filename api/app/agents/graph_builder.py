@@ -77,46 +77,54 @@ class GraphBuilderAgent(BasePassiveAgent):
 
             logger.info(
                 "[GRAPH] entity raw=%r type=%r -> canon=%r norm_type=%s node_id=%s",
-                raw_name, raw_type, canon, norm_type, ent_id,
+                raw_name,
+                raw_type,
+                canon,
+                norm_type,
+                ent_id,
             )
 
             if ent_id not in seen_ids:
                 seen_ids.add(ent_id)
-                nodes.append({
-                    "node_id": ent_id,
-                    "node_type": norm_type,
-                    "props": {
-                        "name": display,
-                        "canonical": canon,
-                        "raw_name": raw_name,
-                        "confidence": confidence,
-                    },
-                })
+                nodes.append(
+                    {
+                        "node_id": ent_id,
+                        "node_type": norm_type,
+                        "props": {
+                            "name": display,
+                            "canonical": canon,
+                            "raw_name": raw_name,
+                            "confidence": confidence,
+                        },
+                    }
+                )
 
             # Always create edge — use placeholder mem node id;
             # orchestrator._upsert_graph() replaces it with real memory_id.
             mem_node_id = f"mem:{memory_id}" if memory_id else "mem:__placeholder__"
-            edge_id = hashlib.sha1(
-                f"{mem_node_id}|{_edge_type_for(norm_type)}|{ent_id}".encode()
-            ).hexdigest()[:32]
-            edges.append({
-                "from_node_id": mem_node_id,
-                "to_node_id": ent_id,
-                "edge_type": _edge_type_for(norm_type),
-                "weight": confidence,
-                "edge_id": edge_id,
-                "provenance": {
-                    "created_by": "extractor",
-                    "model": _OLLAMA_MODEL,
-                    "trace_id": trace_id,
-                    "tool": "graph_builder",
-                    "tool_call_id": call_id,
-                },
-            })
+            edge_id = hashlib.sha1(f"{mem_node_id}|{_edge_type_for(norm_type)}|{ent_id}".encode()).hexdigest()[:32]
+            edges.append(
+                {
+                    "from_node_id": mem_node_id,
+                    "to_node_id": ent_id,
+                    "edge_type": _edge_type_for(norm_type),
+                    "weight": confidence,
+                    "edge_id": edge_id,
+                    "provenance": {
+                        "created_by": "extractor",
+                        "model": _OLLAMA_MODEL,
+                        "trace_id": trace_id,
+                        "tool": "graph_builder",
+                        "tool_call_id": call_id,
+                    },
+                }
+            )
 
         logger.info(
             "GraphBuilder: %d nodes, %d edges for memory=%s",
-            len(nodes), len(edges), memory_id[:12] if memory_id else "?",
+            len(nodes),
+            len(edges),
+            memory_id[:12] if memory_id else "?",
         )
         return {"nodes": nodes, "edges": edges}
 

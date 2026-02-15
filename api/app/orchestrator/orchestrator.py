@@ -43,6 +43,7 @@ _MAX_CHAT_INPUT_LEN = 50_000
 #  Helpers
 # ─────────────────────────────────────────────────────────
 
+
 def _new_id() -> str:
     return uuid.uuid4().hex
 
@@ -60,6 +61,7 @@ def _read_text_content(path: str, max_bytes: int = 20 * 1024 * 1024) -> str:
 # ─────────────────────────────────────────────────────────
 #  Orchestrator
 # ─────────────────────────────────────────────────────────
+
 
 class Orchestrator:
     """Active Orchestrator — plans, dispatches, and traces tool pipelines."""
@@ -83,7 +85,8 @@ class Orchestrator:
         if existing:
             logger.info(
                 "[ORCH]   trace=%s — idempotent skip, card already exists for blob=%s",
-                trace_id[:12], blob_id[:12],
+                trace_id[:12],
+                blob_id[:12],
             )
             return IngestResult(
                 trace_id=trace_id,
@@ -96,17 +99,23 @@ class Orchestrator:
         pipeline = choose_pipeline(mime, path)
         logger.info(
             "[ORCH]   trace=%s — pipeline=%s for %s (%s)",
-            trace_id[:12], pipeline.value, os.path.basename(path), mime,
+            trace_id[:12],
+            pipeline.value,
+            os.path.basename(path),
+            mime,
         )
 
         # Create exec_trace
-        db_repo.insert_exec_trace(trace_id, metadata={
-            "blob_id": blob_id,
-            "source_id": source_id,
-            "path": path,
-            "mime": mime,
-            "pipeline": pipeline.value,
-        })
+        db_repo.insert_exec_trace(
+            trace_id,
+            metadata={
+                "blob_id": blob_id,
+                "source_id": source_id,
+                "path": path,
+                "mime": mime,
+                "pipeline": pipeline.value,
+            },
+        )
 
         # ── Image: parallel OCR + VisionEmbed ─────────────
         if is_image_pipeline(pipeline):
@@ -146,8 +155,11 @@ class Orchestrator:
     ) -> IngestResult:
         # Build steps
         steps_def = build_ingest_steps(
-            pipeline, path=path, blob_id=blob_id,
-            source_id=source_id, mime=mime,
+            pipeline,
+            path=path,
+            blob_id=blob_id,
+            source_id=source_id,
+            mime=mime,
         )
 
         # If doc_parse pipeline, pre-read text content for the first step
@@ -161,21 +173,25 @@ class Orchestrator:
             except OSError as exc:
                 logger.error(
                     "[ORCH]   trace=%s — cannot read file %s: %s",
-                    trace_id[:12], path, exc,
+                    trace_id[:12],
+                    path,
+                    exc,
                 )
                 db_repo.finish_exec_trace(trace_id, "error")
                 return IngestResult(
                     trace_id=trace_id,
                     pipeline=pipeline.value,
                     status="error",
-                    steps=[StepResult(
-                        tool_name="read_file",
-                        call_id=_new_id(),
-                        exec_node_id=_new_id(),
-                        status="error",
-                        error=str(exc),
-                        elapsed_ms=0,
-                    )],
+                    steps=[
+                        StepResult(
+                            tool_name="read_file",
+                            call_id=_new_id(),
+                            exec_node_id=_new_id(),
+                            status="error",
+                            error=str(exc),
+                            elapsed_ms=0,
+                        )
+                    ],
                 )
             steps_def[0].inputs["text"] = content_text
 
@@ -243,7 +259,9 @@ class Orchestrator:
             if sr.status != "ok":
                 logger.warning(
                     "[ORCH]   trace=%s — step %s failed: %s",
-                    trace_id[:12], step_def.tool_name, sr.error,
+                    trace_id[:12],
+                    step_def.tool_name,
+                    sr.error,
                 )
                 # Non-fatal for summarizer/extractor — continue pipeline
                 if step_def.tool_name not in ("summarizer", "extractor"):
@@ -262,7 +280,7 @@ class Orchestrator:
             for sep in (". ", ".\n"):
                 idx = summary.rfind(sep)
                 if idx > 30:
-                    summary = summary[:idx + 1].strip()
+                    summary = summary[: idx + 1].strip()
                     break
 
         # Get text embedding vector_ref if available
@@ -300,7 +318,10 @@ class Orchestrator:
 
         logger.info(
             "[ORCH]   trace=%s — memory_card=%s created (summary=%d chars, entities=%d)",
-            trace_id[:12], memory_id[:12], len(summary), len(entities),
+            trace_id[:12],
+            memory_id[:12],
+            len(summary),
+            len(entities),
         )
 
         try:
@@ -340,7 +361,8 @@ class Orchestrator:
         if oversized:
             logger.info(
                 "[ROUTE]  image %s oversized (%d bytes) — placeholder only",
-                fname, size_bytes,
+                fname,
+                size_bytes,
             )
             memory_id = _new_id()
             db_repo.insert_memory_card(
@@ -447,7 +469,8 @@ class Orchestrator:
             base_text_source = "ocr"
             logger.info(
                 "[IMAGE]  ocr_status=%s ocr_len=%d -> using ocr",
-                ocr_status, len(ocr_text),
+                ocr_status,
+                len(ocr_text),
             )
         elif ocr_text and len(ocr_text.strip()) >= 20:
             # OCR produced some text but failed the strict quality check.
@@ -457,13 +480,15 @@ class Orchestrator:
             base_text_source = "ocr"
             logger.info(
                 "[IMAGE]  ocr_status=%s ocr_len=%d quality=low -> still using ocr (better than caption for diagrams)",
-                ocr_status, len(ocr_text),
+                ocr_status,
+                len(ocr_text),
             )
         else:
             # ── Caption fallback ──────────────────────────
             logger.info(
                 "[IMAGE]  ocr_status=%s ocr_len=%d -> using caption",
-                ocr_status, len(ocr_text),
+                ocr_status,
+                len(ocr_text),
             )
             sr_caption = await self._dispatch_tool(
                 trace_id=trace_id,
@@ -492,8 +517,10 @@ class Orchestrator:
         logger.info(
             "[ORCH]   trace=%s — OCR %s (%d chars), VisionEmbed %s (ref=%s), base_text_source=%s",
             trace_id[:12],
-            ocr_status, len(ocr_text),
-            sr_vision.status, vision_vector_ref[:20] if vision_vector_ref else "—",
+            ocr_status,
+            len(ocr_text),
+            sr_vision.status,
+            vision_vector_ref[:20] if vision_vector_ref else "—",
             base_text_source,
         )
 
@@ -512,8 +539,7 @@ class Orchestrator:
             #  - CLIP/heuristic caption: too short for LLM, extract from
             #    CLIP subjects directly
             is_ocr = base_text_source == "ocr"
-            is_blip = (base_text_source == "caption"
-                       and caption_model == "blip")
+            is_blip = base_text_source == "caption" and caption_model == "blip"
 
             if is_ocr:
                 # ── Summarizer (only for OCR text) ──
@@ -549,9 +575,10 @@ class Orchestrator:
                     # BLIP caption IS the summary — no need for summarizer
                     summary = base_text
                     logger.info(
-                        "[ORCH]   trace=%s — BLIP caption used as summary, "
-                        "extractor extracted %d entities, %d tags",
-                        trace_id[:12], len(entities), len(tags),
+                        "[ORCH]   trace=%s — BLIP caption used as summary, extractor extracted %d entities, %d tags",
+                        trace_id[:12],
+                        len(entities),
+                        len(tags),
                     )
             else:
                 # CLIP / heuristic caption: too short for LLM
@@ -561,19 +588,23 @@ class Orchestrator:
                 if sr_caption and sr_caption.status == "ok":
                     clip_subjects = sr_caption.outputs.get("subjects", [])
                     for subj in clip_subjects:
-                        entities.append({
-                            "name": subj["name"],
-                            "type": "Topic",
-                            "confidence": subj.get("confidence", 0.0),
-                        })
+                        entities.append(
+                            {
+                                "name": subj["name"],
+                                "type": "Topic",
+                                "confidence": subj.get("confidence", 0.0),
+                            }
+                        )
                     clip_tags = sr_caption.outputs.get("tags", [])
                     if clip_tags:
                         tags = clip_tags
 
                 logger.info(
-                    "[ORCH]   trace=%s — caption-sourced (model=%s), "
-                    "extracted %d entities from CLIP subjects, %d tags",
-                    trace_id[:12], caption_model, len(entities), len(tags),
+                    "[ORCH]   trace=%s — caption-sourced (model=%s), extracted %d entities from CLIP subjects, %d tags",
+                    trace_id[:12],
+                    caption_model,
+                    len(entities),
+                    len(tags),
                 )
 
             # ── TextEmbed (always — embeds caption or OCR text) ──
@@ -630,7 +661,7 @@ class Orchestrator:
                 for sep in (". ", ".\n"):
                     idx = summary.rfind(sep)
                     if idx > 30:
-                        summary = summary[:idx + 1].strip()
+                        summary = summary[: idx + 1].strip()
                         break
             else:
                 summary = f"Image: {fname}"
@@ -679,8 +710,11 @@ class Orchestrator:
             "[ORCH]   trace=%s — memory_card=%s created "
             "(base_text_source=%s, ocr=%s, vision=%s, entities=%d, "
             "embedding_refs: text=%s vision=%s)",
-            trace_id[:12], memory_id[:12],
-            base_text_source, ocr_status, sr_vision.status,
+            trace_id[:12],
+            memory_id[:12],
+            base_text_source,
+            ocr_status,
+            sr_vision.status,
             len(entities),
             "present" if text_vector_ref else "none",
             "present" if vision_vector_ref else "none",
@@ -721,10 +755,13 @@ class Orchestrator:
         """Phase 7 grounded Q&A: retrieval → weaver → verifier → persist."""
         trace_id = trace_id or _new_id()
 
-        db_repo.insert_exec_trace(trace_id, metadata={
-            "pipeline": "chat",
-            "user_text": user_text[:200],
-        })
+        db_repo.insert_exec_trace(
+            trace_id,
+            metadata={
+                "pipeline": "chat",
+                "user_text": user_text[:200],
+            },
+        )
 
         step_results: list[StepResult] = []
         prev_exec_node_id: str | None = None
@@ -755,8 +792,7 @@ class Orchestrator:
             trace_id=trace_id,
             tool_name="retrieval",
             intent="chat.retrieve",
-            inputs={"query": user_text, "limit": top_k * 3, "hops": hops,
-                    "_llm_override": {"results": raw_results}},
+            inputs={"query": user_text, "limit": top_k * 3, "hops": hops, "_llm_override": {"results": raw_results}},
             timeout_ms=15000,
             prev_exec_node_id=prev_exec_node_id,
         )
@@ -849,28 +885,36 @@ class Orchestrator:
         for c in citations:
             mid = c.get("memory_id", "")
             ev = ev_map.get(mid, {})
-            enriched_citations.append({
-                "memory_id": mid,
-                "quote": c.get("quote", ""),
-                "source_type": ev.get("source_type", ""),
-                "created_at": ev.get("created_at", ""),
-            })
+            enriched_citations.append(
+                {
+                    "memory_id": mid,
+                    "quote": c.get("quote", ""),
+                    "source_type": ev.get("source_type", ""),
+                    "created_at": ev.get("created_at", ""),
+                }
+            )
 
         # Build evidence response items
         evidence_out = []
         for ev in evidence:
-            evidence_out.append({
-                "memory_id": ev.get("memory_id", ""),
-                "summary": ev.get("summary", ""),
-                "snippet": (ev.get("content_text") or ev.get("summary", ""))[:300],
-                "score": ev.get("score", 0.0),
-                "reasons": ev.get("reasons", []),
-            })
+            evidence_out.append(
+                {
+                    "memory_id": ev.get("memory_id", ""),
+                    "summary": ev.get("summary", ""),
+                    "snippet": (ev.get("content_text") or ev.get("summary", ""))[:300],
+                    "score": ev.get("score", 0.0),
+                    "reasons": ev.get("reasons", []),
+                }
+            )
 
         # ── Step 4: Persist conversation turn + citations ─
         turn_id = _new_id()
         db_repo.insert_conversation_turn(
-            turn_id, user_text, answer, trace_id=trace_id, verdict=verdict,
+            turn_id,
+            user_text,
+            answer,
+            trace_id=trace_id,
+            verdict=verdict,
         )
         db_repo.insert_chat_citations(turn_id, enriched_citations)
 
@@ -897,7 +941,7 @@ class Orchestrator:
         # Fetch full card rows to get content_text + metadata
         cards_by_id = {}
         try:
-            card_rows = db_repo.fetch_memory_cards_by_ids(memory_ids[:top_k * 2])
+            card_rows = db_repo.fetch_memory_cards_by_ids(memory_ids[: top_k * 2])
             for row in card_rows:
                 cards_by_id[row["memory_id"]] = row
         except Exception:
@@ -934,19 +978,22 @@ class Orchestrator:
 
             content_text = card.get("content_text") or ""
             summary = r.get("summary") or card.get("summary") or ""
-            snippet = (content_text[:800] if content_text else summary[:800])
+            snippet = content_text[:800] if content_text else summary[:800]
 
-            evidence.append({
-                "memory_id": mid,
-                "summary": summary,
-                "content_text": snippet,
-                "source_type": meta.get("source_type", card.get("type", "")),
-                "created_at": card.get("created_at", ""),
-                "file_path": meta.get("file_path", ""),
-                "score": r.get("final_score", r.get("score", 0.0)),
-                "reasons": r.get("reasons") if isinstance(r.get("reasons"), list)
-                           else ([r.get("reason")] if r.get("reason") else []),
-            })
+            evidence.append(
+                {
+                    "memory_id": mid,
+                    "summary": summary,
+                    "content_text": snippet,
+                    "source_type": meta.get("source_type", card.get("type", "")),
+                    "created_at": card.get("created_at", ""),
+                    "file_path": meta.get("file_path", ""),
+                    "score": r.get("final_score", r.get("score", 0.0)),
+                    "reasons": r.get("reasons")
+                    if isinstance(r.get("reasons"), list)
+                    else ([r.get("reason")] if r.get("reason") else []),
+                }
+            )
 
         return evidence
 
@@ -978,7 +1025,9 @@ class Orchestrator:
 
         logger.info(
             "[ORCH]   trace=%s — dispatching %s (intent=%s)",
-            trace_id[:12], tool_name, intent,
+            trace_id[:12],
+            tool_name,
+            intent,
         )
 
         agent = entry.agent_factory()
@@ -1014,7 +1063,10 @@ class Orchestrator:
 
         logger.info(
             "[ORCH]   trace=%s — %s finished status=%s elapsed=%dms",
-            trace_id[:12], tool_name, result.status.value, result.elapsed_ms,
+            trace_id[:12],
+            tool_name,
+            result.status.value,
+            result.elapsed_ms,
         )
 
         return StepResult(
@@ -1073,8 +1125,9 @@ class Orchestrator:
                             edge_data["from_node_id"] = f"mem:{memory_id}"
                         # Recalculate edge_id with real memory_id
                         import hashlib as _hl
+
                         edge_data["edge_id"] = _hl.sha1(
-                            f"{edge_data['from_node_id']}|{edge_data.get('edge_type','')}|{edge_data.get('to_node_id','')}".encode()
+                            f"{edge_data['from_node_id']}|{edge_data.get('edge_type', '')}|{edge_data.get('to_node_id', '')}".encode()
                         ).hexdigest()[:32]
                         prov = edge_data.get("provenance", {})
                         if not prov.get("tool_call_id"):

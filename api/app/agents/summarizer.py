@@ -33,7 +33,7 @@ def _fallback_summary(content_text: str, max_chars: int = _MAX_SUMMARY_CHARS) ->
             return cut[: idx + 1].strip()
     # No sentence boundary found — hard truncate
     if len(text) > max_chars:
-        return cut[:max_chars - 3].rstrip() + "..."
+        return cut[: max_chars - 3].rstrip() + "..."
     return cut.strip()
 
 
@@ -56,7 +56,9 @@ class SummarizerAgent(BasePassiveAgent):
 
             prompt = summarizer_prompt(content_text, title, max_chars)
             raw = await ollama_generate(
-                prompt, timeout=60.0, num_predict=256,
+                prompt,
+                timeout=60.0,
+                num_predict=256,
             )
             summary = raw.strip()
 
@@ -70,10 +72,10 @@ class SummarizerAgent(BasePassiveAgent):
                         summary = cut[: idx + 1].strip()
                         break
                 else:
-                    summary = cut[:max_chars - 3].rstrip() + "..."
+                    summary = cut[: max_chars - 3].rstrip() + "..."
 
             # Safety: ensure summary != content_text
-            if summary == content_text[:len(summary)]:
+            if summary == content_text[: len(summary)]:
                 summary = _fallback_summary(content_text, max_chars)
 
             logger.info("LLM summary produced (%d chars)", len(summary))

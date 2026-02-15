@@ -58,13 +58,15 @@ class RetrievalAgent(BasePassiveAgent):
                         if bare_id.startswith("mem:"):
                             bare_id = bare_id[4:]
                         if bare_id not in fts_ids:
-                            graph_additions.append({
-                                "memory_id": bare_id,
-                                "summary": node.props.get("summary", ""),
-                                "score": 0.0,
-                                "reason": "graph_expand",
-                                "path_edge_ids": path_map.get(node.node_id, []),
-                            })
+                            graph_additions.append(
+                                {
+                                    "memory_id": bare_id,
+                                    "summary": node.props.get("summary", ""),
+                                    "score": 0.0,
+                                    "reason": "graph_expand",
+                                    "path_edge_ids": path_map.get(node.node_id, []),
+                                }
+                            )
                             if len(graph_additions) >= _MAX_GRAPH_ADDITIONS:
                                 break
             except Exception:

@@ -19,6 +19,7 @@ _orch = Orchestrator()
 
 # ── Request / Response models ─────────────────────────────
 
+
 class ChatRequest(BaseModel):
     message: str = Field(..., description="User question")
     conversation_id: str | None = Field(None, description="Existing conversation ID to continue")
@@ -63,6 +64,7 @@ class ChatResponse(BaseModel):
 
 
 # ── Helpers ───────────────────────────────────────────────
+
 
 def _now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
@@ -163,6 +165,7 @@ def _hydrate_evidence(ev: dict) -> dict:
 def _humanize_answer(answer: str, citations: list[dict], evidence: list[dict]) -> str:
     """Replace raw [memory_id] references in the answer with human-readable [filename] labels."""
     import re as _re
+
     # Build a map: memory_id -> display label
     label_map: dict[str, str] = {}
     for item in citations + evidence:
@@ -173,6 +176,7 @@ def _humanize_answer(answer: str, citations: list[dict], evidence: list[dict]) -
         title = item.get("title", "")
         if fp:
             import os as _os
+
             label_map[mid] = _os.path.basename(fp)
         elif title:
             label_map[mid] = title[:50]
@@ -186,7 +190,7 @@ def _humanize_answer(answer: str, citations: list[dict], evidence: list[dict]) -
         return m.group(0).replace(mid, label)
 
     # Match [hex_id] patterns (32-char hex memory IDs)
-    answer = _re.sub(r'\[([a-f0-9]{16,64})\]', _replace, answer)
+    answer = _re.sub(r"\[([a-f0-9]{16,64})\]", _replace, answer)
     return answer
 
 
@@ -239,6 +243,7 @@ def _save_turn(conversation_id: str, user_text: str, assistant_text: str, trace_
 
 # ── Endpoint ─────────────────────────────────────────────
 
+
 @router.post("/chat", response_model=ChatResponse)
 async def chat_endpoint(req: ChatRequest):
     """Grounded Q&A: retrieval → weaver → verifier → answer + citations + trace.
@@ -277,6 +282,7 @@ async def chat_endpoint(req: ChatRequest):
 
 # ── Conversation archive endpoints ────────────────────────
 
+
 @router.get("/conversations")
 async def list_conversations(limit: int = 20):
     """List recent conversations."""
@@ -302,6 +308,7 @@ async def get_conversation(conversation_id: str):
         ).fetchone()
         if not row:
             from fastapi import HTTPException
+
             raise HTTPException(status_code=404, detail="Conversation not found")
         turns = conn.execute(
             "SELECT * FROM conversation_turn_v2 WHERE conversation_id = ? ORDER BY created_at ASC",

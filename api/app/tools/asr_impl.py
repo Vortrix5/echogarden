@@ -65,6 +65,7 @@ async def transcribe(audio_path: str) -> dict:
 
     # Local mode — use faster-whisper
     import asyncio
+
     result = await asyncio.to_thread(_transcribe_sync, audio_path)
     return result
 
@@ -90,8 +91,10 @@ def _transcribe_sync(audio_path: str) -> dict:
         full_text = " ".join(texts)
         logger.info(
             "Transcribed %s — %d chars, language=%s (prob=%.2f)",
-            os.path.basename(audio_path), len(full_text),
-            info.language, info.language_probability,
+            os.path.basename(audio_path),
+            len(full_text),
+            info.language,
+            info.language_probability,
         )
         return {
             "text": full_text,

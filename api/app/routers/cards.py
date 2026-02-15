@@ -59,9 +59,7 @@ async def get_card(memory_id: str):
     """Get a single memory card by ID, enriched with source metadata."""
     conn = get_conn()
     try:
-        row = conn.execute(
-            "SELECT * FROM memory_card WHERE memory_id = ?", (memory_id,)
-        ).fetchone()
+        row = conn.execute("SELECT * FROM memory_card WHERE memory_id = ?", (memory_id,)).fetchone()
         if row is None:
             raise HTTPException(status_code=404, detail="Card not found")
         d = _card_dict(row)
@@ -91,8 +89,7 @@ async def get_card(memory_id: str):
         d["blob_id"] = blob_id
         d["mime"] = mime
         d["media_url"] = f"/api/blobs/{blob_id}" if blob_id else ""
-        d["thumb_url"] = (f"/api/blobs/{blob_id}/thumb?w=320&h=320"
-                          if blob_id and mime.startswith("image/") else "")
+        d["thumb_url"] = f"/api/blobs/{blob_id}/thumb?w=320&h=320" if blob_id and mime.startswith("image/") else ""
         d["open_url"] = f"/api/cards/{memory_id}/open" if (blob_id or file_path) else ""
 
         return d
@@ -119,9 +116,7 @@ async def open_card_source(memory_id: str):
 
         # Try blob first
         if blob_id:
-            blob_row = conn.execute(
-                "SELECT path, mime FROM blob WHERE blob_id = ?", (blob_id,)
-            ).fetchone()
+            blob_row = conn.execute("SELECT path, mime FROM blob WHERE blob_id = ?", (blob_id,)).fetchone()
             if blob_row and blob_row["path"] and os.path.isfile(blob_row["path"]):
                 return FileResponse(
                     blob_row["path"],
@@ -147,9 +142,7 @@ async def stream_blob(blob_id: str):
     """Stream a raw blob file by blob_id."""
     conn = get_conn()
     try:
-        row = conn.execute(
-            "SELECT path, mime FROM blob WHERE blob_id = ?", (blob_id,)
-        ).fetchone()
+        row = conn.execute("SELECT path, mime FROM blob WHERE blob_id = ?", (blob_id,)).fetchone()
         if row is None:
             raise HTTPException(status_code=404, detail="Blob not found")
         if not row["path"] or not os.path.isfile(row["path"]):
@@ -174,9 +167,7 @@ async def blob_thumbnail(
     safe_id = blob_id.replace("/", "").replace("..", "")
     conn = get_conn()
     try:
-        row = conn.execute(
-            "SELECT path, mime FROM blob WHERE blob_id = ?", (safe_id,)
-        ).fetchone()
+        row = conn.execute("SELECT path, mime FROM blob WHERE blob_id = ?", (safe_id,)).fetchone()
         if row is None:
             raise HTTPException(status_code=404, detail="Blob not found")
         src_path = row["path"]
@@ -196,6 +187,7 @@ async def blob_thumbnail(
     if not os.path.isfile(cache_path):
         try:
             from PIL import Image
+
             img = Image.open(src_path)
             img.thumbnail((w, h))
             if img.mode not in ("RGB", "L"):

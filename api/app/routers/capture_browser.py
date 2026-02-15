@@ -41,6 +41,7 @@ def _new_id() -> str:
 
 # ── Request / Response models ─────────────────────────────
 
+
 class HighlightRequest(BaseModel):
     url: str
     title: str = ""
@@ -95,6 +96,7 @@ class ImportHistoryResponse(BaseModel):
 
 # ── Helpers ───────────────────────────────────────────────
 
+
 def _create_browser_memory(
     card_type: str,
     summary: str,
@@ -124,18 +126,22 @@ def _create_browser_memory(
 
     # Enqueue text embedding job if we have substantial text
     if content_text and len(content_text.strip()) > 10:
-        enqueue_job("ingest_capture", {
-            "memory_id": memory_id,
-            "text": content_text[:10000],
-            "source_type": source_type,
-            "card_type": card_type,
-        })
+        enqueue_job(
+            "ingest_capture",
+            {
+                "memory_id": memory_id,
+                "text": content_text[:10000],
+                "source_type": source_type,
+                "card_type": card_type,
+            },
+        )
 
     logger.info("Browser capture: %s — memory_id=%s url=%s", card_type, memory_id[:12], url[:60])
     return memory_id
 
 
 # ── Endpoints ─────────────────────────────────────────────
+
 
 @router.post("/highlight", response_model=CaptureResponse, dependencies=[Depends(_verify_api_key)])
 async def capture_highlight(req: HighlightRequest):
@@ -233,7 +239,7 @@ async def import_history(req: ImportHistoryRequest):
     Parameters control how much history the extension should push.
     """
     memory_ids: list[str] = []
-    for entry in req.entries[:req.max_items]:
+    for entry in req.entries[: req.max_items]:
         url = entry.get("url", "")
         title = entry.get("title", "")
         ts = entry.get("ts", _now_iso())

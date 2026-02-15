@@ -64,11 +64,13 @@ def _validate_and_clean(data: dict) -> dict:
         confidence = max(0.0, min(1.0, confidence))
         if confidence < _MIN_CONFIDENCE:
             continue
-        entities.append({
-            "name": _normalize_entity_name(name, etype),
-            "type": etype,
-            "confidence": round(confidence, 2),
-        })
+        entities.append(
+            {
+                "name": _normalize_entity_name(name, etype),
+                "type": etype,
+                "confidence": round(confidence, 2),
+            }
+        )
 
     tags = []
     for tag in data.get("tags", [])[:_MAX_TAGS]:
@@ -83,11 +85,13 @@ def _validate_and_clean(data: dict) -> dict:
         text = str(act.get("text", "")).strip()
         if not text:
             continue
-        actions.append({
-            "text": text,
-            "due": act.get("due") or None,
-            "priority": act.get("priority") or None,
-        })
+        actions.append(
+            {
+                "text": text,
+                "due": act.get("due") or None,
+                "priority": act.get("priority") or None,
+            }
+        )
 
     return {
         "entities": entities,
@@ -122,7 +126,10 @@ class ExtractorAgent(BasePassiveAgent):
 
             # First attempt — request JSON format
             raw = await ollama_generate_json(
-                prompt, system=system, timeout=120.0, num_predict=768,
+                prompt,
+                system=system,
+                timeout=120.0,
+                num_predict=768,
             )
             parsed = _try_parse_json(raw)
 
@@ -131,7 +138,9 @@ class ExtractorAgent(BasePassiveAgent):
                 logger.warning("Extractor: invalid JSON on first attempt, retrying")
                 retry_prompt = prompt + "\n\n" + extractor_retry_prompt()
                 raw = await ollama_generate(
-                    retry_prompt, timeout=60.0, num_predict=768,
+                    retry_prompt,
+                    timeout=60.0,
+                    num_predict=768,
                 )
                 parsed = _try_parse_json(raw)
 

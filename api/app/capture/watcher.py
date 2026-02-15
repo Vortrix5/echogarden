@@ -24,9 +24,7 @@ from app.core.config import (
 logger = logging.getLogger("echogarden.watcher")
 
 # Directories to always skip (by name).
-_IGNORED_DIRS: frozenset[str] = frozenset(
-    {"__pycache__", ".git", ".svn", "node_modules", ".DS_Store"}
-)
+_IGNORED_DIRS: frozenset[str] = frozenset({"__pycache__", ".git", ".svn", "node_modules", ".DS_Store"})
 
 
 def _is_hidden(name: str) -> bool:
@@ -42,11 +40,7 @@ def _walk_roots(roots: list[str]):
             continue
         for dirpath, dirnames, filenames in os.walk(root_path):
             # Prune ignored / hidden directories in-place.
-            dirnames[:] = [
-                d
-                for d in dirnames
-                if not _is_hidden(d) and d not in _IGNORED_DIRS
-            ]
+            dirnames[:] = [d for d in dirnames if not _is_hidden(d) and d not in _IGNORED_DIRS]
             for fname in filenames:
                 if _is_hidden(fname):
                     continue
@@ -81,7 +75,9 @@ def _process_file(fpath: Path, st: os.stat_result) -> None:
     change = "MODIFIED" if existing else "NEW"
     logger.info(
         "[DETECT] %s file: %s (%s)",
-        change, path_str, _format_size(size_bytes),
+        change,
+        path_str,
+        _format_size(size_bytes),
     )
 
     # ── Step 2: Compute sha256 (streaming) ────────────────
@@ -127,19 +123,22 @@ def _process_file(fpath: Path, st: os.stat_result) -> None:
     )
     logger.info(
         "[JOB]    Enqueued ingest_blob job_id=%s trace=%s for %s",
-        job_id[:12], trace_id[:12], fpath.name,
+        job_id[:12],
+        trace_id[:12],
+        fpath.name,
     )
     logger.info(
         "[DONE]   Pipeline complete for %s — source=%s blob=%s job=%s",
-        fpath.name, source_id[:8], blob_id[:8], job_id[:8],
+        fpath.name,
+        source_id[:8],
+        blob_id[:8],
+        job_id[:8],
     )
 
 
 async def watch_loop() -> None:
     """Run forever: scan watch roots every EG_POLL_INTERVAL seconds."""
-    logger.info(
-        "Watcher started — roots=%s, interval=%ss", EG_WATCH_ROOTS, EG_POLL_INTERVAL
-    )
+    logger.info("Watcher started — roots=%s, interval=%ss", EG_WATCH_ROOTS, EG_POLL_INTERVAL)
     scan_count = 0
     while True:
         try:
@@ -166,5 +165,7 @@ def _scan_once(scan_number: int = 0) -> None:
     if files_changed > 0:
         logger.info(
             "[SCAN #%d] Scanned %d files — %d new/modified",
-            scan_number, files_seen, files_changed,
+            scan_number,
+            files_seen,
+            files_changed,
         )

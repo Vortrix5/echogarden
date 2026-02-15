@@ -84,14 +84,16 @@ async def feed_today(
                 mid = r["memory_id"]
                 blob_id = meta.get("blob_id", "")
                 file_path = meta.get("file_path", "")
-                reminders.append({
-                    "memory_id": mid,
-                    "title": _card_title(r, meta),
-                    "text": text,
-                    "due": a.get("due") or "",
-                    "priority": a.get("priority") or "medium",
-                    "open_url": f"/api/cards/{mid}/open" if (blob_id or file_path) else "",
-                })
+                reminders.append(
+                    {
+                        "memory_id": mid,
+                        "title": _card_title(r, meta),
+                        "text": text,
+                        "due": a.get("due") or "",
+                        "priority": a.get("priority") or "medium",
+                        "open_url": f"/api/cards/{mid}/open" if (blob_id or file_path) else "",
+                    }
+                )
 
         # Sort: overdue first, then by priority
         _prio_map = {"high": 0, "medium": 1, "low": 2}
@@ -138,17 +140,19 @@ async def feed_today(
 
             open_url = f"/api/cards/{mid}/open" if (blob_id or file_path) else ""
 
-            recent_memories.append({
-                "memory_id": mid,
-                "title": _card_title(r, meta),
-                "summary": (r["summary"] or "")[:200],
-                "mime": mime,
-                "source_type": source_type,
-                "created_at": r["created_at"] or "",
-                "thumb_url": thumb_url,
-                "media_url": media_url,
-                "open_url": open_url,
-            })
+            recent_memories.append(
+                {
+                    "memory_id": mid,
+                    "title": _card_title(r, meta),
+                    "summary": (r["summary"] or "")[:200],
+                    "mime": mime,
+                    "source_type": source_type,
+                    "created_at": r["created_at"] or "",
+                    "thumb_url": thumb_url,
+                    "media_url": media_url,
+                    "open_url": open_url,
+                }
+            )
 
             # Activity counting
             activity["total_new"] += 1
@@ -196,14 +200,10 @@ async def feed_today(
             "date": datetime.now(timezone.utc).strftime("%A, %B %d"),
             "window": window,
             "generated_at": now_iso,
-            "reminders": [
-                {**r, "overdue": bool(r.get("due") and r["due"] <= now_str)}
-                for r in reminders
-            ],
+            "reminders": [{**r, "overdue": bool(r.get("due") and r["due"] <= now_str)} for r in reminders],
             "recent_memories": recent_memories,
             "emerging_topics": [
-                {"entity": e["label"], "type": e["type"], "count_recent": e["count_recent"]}
-                for e in emerging_topics
+                {"entity": e["label"], "type": e["type"], "count_recent": e["count_recent"]} for e in emerging_topics
             ],
             "activity_summary": {
                 "total": activity["total_new"],
@@ -214,7 +214,9 @@ async def feed_today(
             },
             # backward-compat aliases
             "recent_cards": recent_memories,
-            "top_entities": [{"canonical": e["label"], "type": e["type"], "count": e["count_recent"]} for e in emerging_topics],
+            "top_entities": [
+                {"canonical": e["label"], "type": e["type"], "count": e["count_recent"]} for e in emerging_topics
+            ],
             "actions": reminders,
             "suggested_clusters": [],
         }

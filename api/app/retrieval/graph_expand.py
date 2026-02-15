@@ -127,9 +127,7 @@ def _expand(
 # ── SQL helpers ──────────────────────────────────────────
 
 
-def _entity_neighbours_of_mem_nodes(
-    conn, mem_node_ids: list[str]
-) -> list[dict[str, str]]:
+def _entity_neighbours_of_mem_nodes(conn, mem_node_ids: list[str]) -> list[dict[str, str]]:
     """Return entity node_ids connected to the given mem:* nodes."""
     if not mem_node_ids:
         return []
@@ -149,9 +147,7 @@ def _entity_neighbours_of_mem_nodes(
     return [{"mem_node_id": r[0], "entity_node_id": r[1]} for r in rows]
 
 
-def _mem_neighbours_of_entities(
-    conn, entity_node_ids: list[str]
-) -> list[dict[str, str]]:
+def _mem_neighbours_of_entities(conn, entity_node_ids: list[str]) -> list[dict[str, str]]:
     """Return mem:* node_ids connected to the given entity nodes."""
     if not entity_node_ids:
         return []
