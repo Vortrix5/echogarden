@@ -54,7 +54,11 @@ def build_ingest_steps(
     source_id: str,
     mime: str,
 ) -> list[ToolStep]:
-    """Return an ordered list of ToolSteps for the chosen pipeline."""
+    """Return an ordered list of ToolSteps for the chosen pipeline.
+
+    Phase 6 pipeline:
+      doc_parse/asr -> summarizer -> extractor -> text_embed -> graph_builder -> commit
+    """
 
     if pipeline == PipelineType.doc_parse:
         return [
@@ -63,6 +67,20 @@ def build_ingest_steps(
                 intent="ingest.parse",
                 inputs={"text": "", "path": path, "blob_id": blob_id},
                 timeout_ms=15000,
+            ),
+            ToolStep(
+                tool_name="summarizer",
+                intent="ingest.summarize",
+                inputs={},  # filled at runtime from extracted text
+                timeout_ms=90000,
+                depends_on=["doc_parse"],
+            ),
+            ToolStep(
+                tool_name="extractor",
+                intent="ingest.extract",
+                inputs={},  # filled at runtime
+                timeout_ms=180000,
+                depends_on=["doc_parse"],
             ),
             ToolStep(
                 tool_name="text_embed",
@@ -74,16 +92,15 @@ def build_ingest_steps(
             ToolStep(
                 tool_name="graph_builder",
                 intent="ingest.graph",
-                inputs={},  # filled at runtime
+                inputs={},  # filled at runtime from extractor entities
                 timeout_ms=10000,
-                depends_on=["text_embed"],
+                depends_on=["extractor"],
             ),
         ]
 
     if pipeline == PipelineType.ocr:
         # Image pipeline is handled directly by the orchestrator
         # via _ingest_image() with parallel OCR + VisionEmbed branches.
-        # This function should NOT be called for images.
         raise ValueError(
             "Image pipeline uses Orchestrator._ingest_image(), "
             "not build_ingest_steps()"
@@ -98,6 +115,20 @@ def build_ingest_steps(
             timeout_ms=120000,
         ),
         ToolStep(
+            tool_name="summarizer",
+            intent="ingest.summarize",
+            inputs={},
+            timeout_ms=90000,
+            depends_on=["asr"],
+        ),
+        ToolStep(
+            tool_name="extractor",
+            intent="ingest.extract",
+            inputs={},
+            timeout_ms=180000,
+            depends_on=["asr"],
+        ),
+        ToolStep(
             tool_name="text_embed",
             intent="ingest.embed",
             inputs={},
@@ -109,7 +140,7 @@ def build_ingest_steps(
             intent="ingest.graph",
             inputs={},
             timeout_ms=10000,
-            depends_on=["text_embed"],
+            depends_on=["extractor"],
         ),
     ]
 

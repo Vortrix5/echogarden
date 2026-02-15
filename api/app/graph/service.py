@@ -36,19 +36,46 @@ class GraphService:
 
     # ── upsert ────────────────────────────────────────────
     def upsert_nodes(self, nodes: list[GraphNodeIn]) -> int:
+        """Upsert nodes with smart prop merging.
+
+        On conflict:
+        - Keeps the highest confidence value.
+        - Preserves the 'canonical' field (immutable).
+        - Prefers the longest / most descriptive 'name' (display name).
+        """
         if not nodes:
             return 0
         conn = get_conn()
         try:
             for n in nodes:
-                conn.execute(
-                    """INSERT INTO graph_node (node_id, node_type, props)
-                       VALUES (?, ?, ?)
-                       ON CONFLICT(node_id) DO UPDATE SET
-                         node_type = excluded.node_type,
-                         props     = excluded.props""",
-                    (n.node_id, n.node_type, json.dumps(n.props)),
-                )
+                existing = conn.execute(
+                    "SELECT props FROM graph_node WHERE node_id = ?",
+                    (n.node_id,),
+                ).fetchone()
+
+                if existing is not None:
+                    old_props = json.loads(existing[0]) if existing[0] else {}
+                    merged = {**old_props, **n.props}
+                    # Keep highest confidence
+                    old_conf = float(old_props.get("confidence", 0.0))
+                    new_conf = float(n.props.get("confidence", 0.0))
+                    merged["confidence"] = max(old_conf, new_conf)
+                    # Preserve canonical (immutable)
+                    if "canonical" in old_props:
+                        merged["canonical"] = old_props["canonical"]
+                    # Prefer longer display name
+                    old_name = old_props.get("name", "")
+                    new_name = n.props.get("name", "")
+                    merged["name"] = old_name if len(old_name) >= len(new_name) else new_name
+                    conn.execute(
+                        """UPDATE graph_node SET node_type = ?, props = ? WHERE node_id = ?""",
+                        (n.node_type, json.dumps(merged), n.node_id),
+                    )
+                else:
+                    conn.execute(
+                        """INSERT INTO graph_node (node_id, node_type, props) VALUES (?, ?, ?)""",
+                        (n.node_id, n.node_type, json.dumps(n.props)),
+                    )
             conn.commit()
             return len(nodes)
         finally:

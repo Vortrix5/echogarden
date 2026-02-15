@@ -8,3 +8,4 @@ Pillow
 faster-whisper
 sentence-transformers
 open_clip_torch
+transformers

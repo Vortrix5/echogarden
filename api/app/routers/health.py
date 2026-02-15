@@ -28,5 +28,19 @@ async def healthz():
     except Exception:
         qdrant_status = "unreachable"
 
+    # ── LLM (Ollama) check ──
+    llm_status = "unavailable"
+    try:
+        from app.llm.ollama_client import ping_ollama
+        if await ping_ollama():
+            llm_status = "ok"
+    except Exception:
+        llm_status = "error"
+
     ok = sqlite_status == "ok" and qdrant_status == "ok"
-    return {"ok": ok, "sqlite": sqlite_status, "qdrant": qdrant_status}
+    return {
+        "ok": ok,
+        "sqlite": sqlite_status,
+        "qdrant": qdrant_status,
+        "llm": llm_status,
+    }

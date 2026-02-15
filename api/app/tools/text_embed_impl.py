@@ -21,7 +21,12 @@ _VECTOR_DIM = 384  # all-MiniLM-L6-v2 default
 
 
 def _load_model():
-    """Load sentence-transformers model (singleton)."""
+    """Load sentence-transformers model (singleton).
+
+    Uses offline mode when the model is already cached to avoid
+    HuggingFace Hub network calls that fail inside Docker.
+    Retries on transient errors instead of permanently caching failure.
+    """
     global _model, _model_loaded, _VECTOR_DIM
     if _model_loaded:
         return _model
@@ -32,19 +37,40 @@ def _load_model():
         os.makedirs(_ST_CACHE, exist_ok=True)
         os.environ["SENTENCE_TRANSFORMERS_HOME"] = _ST_CACHE
 
-        logger.info("Loading sentence-transformers model '%s' (cache=%s)...", _MODEL_NAME, _ST_CACHE)
-        _model = SentenceTransformer(_MODEL_NAME, cache_folder=_ST_CACHE)
+        # Check if model is already cached locally
+        model_dir = os.path.join(
+            _ST_CACHE,
+            f"models--sentence-transformers--{_MODEL_NAME}",
+            "snapshots",
+        )
+        local_only = os.path.isdir(model_dir) and len(os.listdir(model_dir)) > 0
+
+        if local_only:
+            # Force offline — prevents HF Hub network calls that fail in Docker
+            os.environ["HF_HUB_OFFLINE"] = "1"
+            os.environ["TRANSFORMERS_OFFLINE"] = "1"
+            logger.info(
+                "Model cache found at %s — loading in offline mode", model_dir
+            )
+
+        logger.info("Loading sentence-transformers model '%s' (cache=%s, offline=%s)...",
+                     _MODEL_NAME, _ST_CACHE, local_only)
+        _model = SentenceTransformer(
+            _MODEL_NAME,
+            cache_folder=_ST_CACHE,
+            local_files_only=local_only,
+        )
         _VECTOR_DIM = _model.get_sentence_embedding_dimension()
         _model_loaded = True
         logger.info("Sentence-transformers model loaded (dim=%d).", _VECTOR_DIM)
         return _model
     except ImportError:
         logger.warning("sentence-transformers not installed — text_embed will use stub mode")
-        _model_loaded = True
+        _model_loaded = True  # permanent — won't fix itself
         return None
     except Exception:
-        logger.exception("Failed to load sentence-transformers model")
-        _model_loaded = True
+        logger.exception("Failed to load sentence-transformers model — will retry next call")
+        # Do NOT set _model_loaded — allow retry on next call
         return None
 
 
@@ -58,6 +84,7 @@ async def embed_text(
     text: str,
     memory_id: str = "",
     source_type: str = "file",
+    created_at: str = "",
 ) -> dict:
     """Generate text embedding and upsert to Qdrant.
 
@@ -65,14 +92,19 @@ async def embed_text(
     """
     import asyncio
 
+    assert memory_id and len(memory_id) > 0, "memory_id must not be empty"
+
+    if not created_at:
+        created_at = datetime.now(timezone.utc).isoformat()
+
     if not text or not text.strip():
         return {"vector_ref": ""}
 
-    result = await asyncio.to_thread(_embed_text_sync, text, memory_id, source_type)
+    result = await asyncio.to_thread(_embed_text_sync, text, memory_id, source_type, created_at)
     return result
 
 
-def _embed_text_sync(text: str, memory_id: str, source_type: str) -> dict:
+def _embed_text_sync(text: str, memory_id: str, source_type: str, created_at: str) -> dict:
     """Synchronous text embedding + Qdrant upsert."""
     model = _load_model()
     if model is None:
@@ -98,13 +130,13 @@ def _embed_text_sync(text: str, memory_id: str, source_type: str) -> dict:
                 "memory_id": memory_id,
                 "modality": "text",
                 "source_type": source_type,
-                "text_preview": truncated[:200],
-                "ts": datetime.now(timezone.utc).isoformat(),
+                "created_at": created_at,
             },
+            point_id=memory_id,
         )
 
         vector_ref = f"qdrant:text:{point_id}"
-        logger.info("Text embedding upserted: %s (dim=%d)", vector_ref, len(vector))
+        logger.info("[TEXT_EMBED] memory_id=%s upserted to Qdrant (dim=%d)", memory_id, len(vector))
         return {"vector_ref": vector_ref}
 
     except Exception as exc:

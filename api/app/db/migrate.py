@@ -27,6 +27,42 @@ def _safe_add_column(conn, table: str, column: str, col_type: str) -> None:
         logger.debug("Column %s.%s skipped: %s", table, column, exc)
 
 
+def _run_phase6_migration(conn) -> None:
+    """Phase 6: ensure memory_card has content_text + metadata_json columns."""
+    # Detect memory card table
+    tables = [
+        r[0]
+        for r in conn.execute(
+            "SELECT name FROM sqlite_master WHERE type='table'"
+        ).fetchall()
+    ]
+
+    mc_table = "memory_card"
+    if "MEMORY_CARD" in tables:
+        mc_table = "MEMORY_CARD"
+
+    # Add missing columns
+    _safe_add_column(conn, mc_table, "content_text", "TEXT")
+    _safe_add_column(conn, mc_table, "metadata_json", "TEXT")
+    _safe_add_column(conn, mc_table, "source_time", "TEXT")
+
+    # Ensure type and created_at exist (they should from schema.sql)
+    _safe_add_column(conn, mc_table, "type", "TEXT")
+    _safe_add_column(conn, mc_table, "created_at",
+                     "TEXT NOT NULL DEFAULT (datetime('now'))")
+
+    # Create FTS table if missing
+    try:
+        conn.execute(
+            f"""CREATE VIRTUAL TABLE IF NOT EXISTS memory_card_fts
+                USING fts5(summary, content='[{mc_table}]', content_rowid='rowid')"""
+        )
+    except Exception:
+        pass  # may already exist or fail on rebuild
+
+    logger.info("Phase 6 migration complete for table %s", mc_table)
+
+
 def run_migration() -> None:
     """Create / open the SQLite DB and apply all idempotent schemas."""
     # Ensure the directory for the DB file exists
@@ -60,7 +96,10 @@ def run_migration() -> None:
             "CREATE INDEX IF NOT EXISTS idx_conv_turn_trace ON conversation_turn(trace_id)"
         )
 
+        # Phase 6: content_text + metadata_json on memory_card
+        _run_phase6_migration(conn)
+
         conn.commit()
-        logger.info("Phase 3 migration complete")
+        logger.info("All migrations complete (Phase 1-6)")
     finally:
         conn.close()

@@ -1,134 +1,139 @@
-"""GraphBuilderAgent — structured entity extraction for property graph."""
+"""GraphBuilderAgent — build graph nodes/edges from pre-extracted entities.
+
+Phase 6.1: Uses entity canonicalization and type normalization so that
+semantically identical entities ("Dog", "dogs", " a dog ") converge to
+a single graph node.
+"""
 
 from __future__ import annotations
 
-import re
+import hashlib
+import logging
+import os
 
 from app.agents.base import BasePassiveAgent
 from app.core.tool_contracts import ToolEnvelope
 from app.core.tool_registry import registry
-
-# Common English stopwords (capitalized forms) to exclude.
-_STOPWORDS = frozenset({
-    "THE", "AND", "BUT", "FOR", "NOR", "YET", "WITH", "FROM",
-    "INTO", "UPON", "ABOUT", "AFTER", "BEFORE", "DURING", "THROUGH",
-    "BETWEEN", "WITHOUT", "WITHIN", "ALONG", "AMONG", "ABOVE", "BELOW",
-    "THIS", "THAT", "THESE", "THOSE", "WILL", "WOULD", "COULD", "SHOULD",
-    "HAVE", "HAS", "HAD", "BEEN", "BEING", "ARE", "WAS", "WERE", "NOT",
-    "ALL", "ANY", "EACH", "EVERY", "BOTH", "FEW", "MORE", "MOST", "OTHER",
-    "SOME", "SUCH", "THAN", "TOO", "VERY", "CAN", "JUST", "DON", "NOW",
-    "HER", "HIM", "HIS", "HOW", "ITS", "LET", "MAY", "OUR", "OWN",
-    "SAY", "SHE", "WHO", "WHY", "YOU", "DID", "GET", "GOT", "ONE",
-    "TWO", "NEW", "OLD", "SEE", "WAY", "USE", "HER", "HIS", "ALSO",
-})
-
-# Multi-word capitalized phrase pattern
-_PHRASE_RE = re.compile(r"\b(?:[A-Z][A-Za-z]+(?:\s+[A-Z][A-Za-z]+)+)\b")
-_WORD_RE = re.compile(r"\b[A-Z][A-Za-z]{2,}\b")
-
-# Simple patterns for structured extraction
-_EMAIL_RE = re.compile(r"\b[\w.+-]+@[\w-]+\.[\w.-]+\b")
-_URL_RE = re.compile(r"https?://[^\s<>\"']+")
-_DATE_RE = re.compile(
-    r"\b\d{4}[-/]\d{1,2}[-/]\d{1,2}\b"
-    r"|\b(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\w*\s+\d{1,2},?\s*\d{4}\b",
-    re.IGNORECASE,
+from app.graph.canonicalize import (
+    canonicalize_entity_name,
+    choose_display_name,
+    normalize_entity_type,
 )
 
+logger = logging.getLogger("echogarden.agents.graph_builder")
 
-def _extract_entities(text: str) -> list[dict]:
-    """Extract structured entities from text."""
-    entities: list[dict] = []
-    seen: set[str] = set()
+_MAX_EDGES_PER_CARD = 30
+_ABOUT_TYPES = {"Project", "Topic"}
+_OLLAMA_MODEL = os.environ.get("EG_OLLAMA_MODEL", "phi3:mini")
 
-    # Multi-word phrases (higher confidence)
-    for match in _PHRASE_RE.finditer(text):
-        phrase = match.group()
-        key = phrase.upper()
-        if key not in seen and all(w.upper() not in _STOPWORDS for w in phrase.split()):
-            seen.add(key)
-            entities.append({"label": phrase, "entity_type": "Phrase", "confidence": 0.6})
 
-    # Single capitalized words
-    for match in _WORD_RE.finditer(text):
-        word = match.group()
-        key = word.upper()
-        if key not in _STOPWORDS and key not in seen:
-            seen.add(key)
-            entities.append({"label": word, "entity_type": "Entity", "confidence": 0.3})
+def _entity_node_id(norm_type: str, canonical_name: str) -> str:
+    """Deterministic node id from canonical type + name.
 
-    # URLs
-    for match in _URL_RE.finditer(text):
-        url = match.group()
-        if url not in seen:
-            seen.add(url)
-            entities.append({"label": url, "entity_type": "URL", "confidence": 0.9})
+    >>> _entity_node_id("Topic", "dog")
+    'ent:...'  # same hash every time for ("Topic", "dog")
+    """
+    raw = f"{norm_type}|{canonical_name}"
+    h = hashlib.sha1(raw.encode()).hexdigest()[:16]
+    return f"ent:{h}"
 
-    # Emails
-    for match in _EMAIL_RE.finditer(text):
-        email = match.group()
-        if email not in seen:
-            seen.add(email)
-            entities.append({"label": email, "entity_type": "Email", "confidence": 0.9})
 
-    # Dates
-    for match in _DATE_RE.finditer(text):
-        date_str = match.group()
-        if date_str not in seen:
-            seen.add(date_str)
-            entities.append({"label": date_str, "entity_type": "Date", "confidence": 0.7})
-
-    return entities
+def _edge_type_for(entity_type: str) -> str:
+    """MENTIONS for Person/Org/Place, ABOUT for Project/Topic, MENTIONS for Other."""
+    if entity_type in _ABOUT_TYPES:
+        return "ABOUT"
+    return "MENTIONS"
 
 
 class GraphBuilderAgent(BasePassiveAgent):
     name = "graph_builder"
-    version = "0.1.0"
+    version = "0.7.0"
 
     async def execute(self, envelope: ToolEnvelope) -> dict:
-        content_text: str = envelope.inputs.get("content_text", "")
         memory_id: str = envelope.inputs.get("memory_id", "")
+        entities: list[dict] = envelope.inputs.get("entities", [])
+        source: dict = envelope.inputs.get("source", {})
         call_id: str = envelope.inputs.get("_call_id", "")
-
-        entities = _extract_entities(content_text)
+        trace_id: str = envelope.trace_id
 
         nodes: list[dict] = []
         edges: list[dict] = []
+        seen_ids: set[str] = set()
 
-        for ent in entities:
-            label = ent["label"]
-            ent_type = ent["entity_type"]
-            confidence = ent["confidence"]
-            ent_id = f"ent:{label.lower().replace(' ', '_')}"
+        for ent in entities[:_MAX_EDGES_PER_CARD]:
+            raw_name = ent.get("name", "").strip()
+            raw_type = ent.get("type", "Other")
+            confidence = float(ent.get("confidence", 0.5))
+            if not raw_name:
+                continue
 
-            nodes.append({
-                "node_id": ent_id,
-                "node_type": ent_type,
-                "props": {"label": label, "entity_type": ent_type},
-            })
-            if memory_id:
-                mem_node_id = f"mem:{memory_id}"
-                edges.append({
-                    "from_node_id": mem_node_id,
-                    "to_node_id": ent_id,
-                    "edge_type": "MENTIONS",
-                    "weight": confidence,
-                    "provenance": {
-                        "created_by": "GraphBuilderAgent",
-                        "tool_call_id": call_id,
+            # ── Canonicalize ──────────────────────────────
+            norm_type = normalize_entity_type(raw_type)
+            canon = canonicalize_entity_name(raw_name, entity_type=norm_type)
+            if not canon:
+                continue
+            display = choose_display_name(raw_name, canon, norm_type)
+
+            ent_id = _entity_node_id(norm_type, canon)
+
+            logger.info(
+                "[GRAPH] entity raw=%r type=%r -> canon=%r norm_type=%s node_id=%s",
+                raw_name, raw_type, canon, norm_type, ent_id,
+            )
+
+            if ent_id not in seen_ids:
+                seen_ids.add(ent_id)
+                nodes.append({
+                    "node_id": ent_id,
+                    "node_type": norm_type,
+                    "props": {
+                        "name": display,
+                        "canonical": canon,
+                        "raw_name": raw_name,
                         "confidence": confidence,
-                        "migrated": False,
                     },
                 })
 
+            # Always create edge — use placeholder mem node id;
+            # orchestrator._upsert_graph() replaces it with real memory_id.
+            mem_node_id = f"mem:{memory_id}" if memory_id else "mem:__placeholder__"
+            edge_id = hashlib.sha1(
+                f"{mem_node_id}|{_edge_type_for(norm_type)}|{ent_id}".encode()
+            ).hexdigest()[:32]
+            edges.append({
+                "from_node_id": mem_node_id,
+                "to_node_id": ent_id,
+                "edge_type": _edge_type_for(norm_type),
+                "weight": confidence,
+                "edge_id": edge_id,
+                "provenance": {
+                    "created_by": "extractor",
+                    "model": _OLLAMA_MODEL,
+                    "trace_id": trace_id,
+                    "tool": "graph_builder",
+                    "tool_call_id": call_id,
+                },
+            })
+
+        logger.info(
+            "GraphBuilder: %d nodes, %d edges for memory=%s",
+            len(nodes), len(edges), memory_id[:12] if memory_id else "?",
+        )
         return {"nodes": nodes, "edges": edges}
 
 
 registry.register(
     name="graph_builder",
-    version="0.1.0",
-    description="Build knowledge-graph nodes and edges from content text (structured extraction).",
-    input_schema={"type": "object", "properties": {"content_text": {"type": "string"}}},
+    version="0.7.0",
+    description="Build knowledge-graph nodes and edges from pre-extracted entities with canonicalization.",
+    input_schema={
+        "type": "object",
+        "properties": {
+            "memory_id": {"type": "string"},
+            "entities": {"type": "array"},
+            "source": {"type": "object"},
+        },
+    },
     output_schema={
         "type": "object",
         "properties": {

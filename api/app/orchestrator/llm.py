@@ -1,4 +1,8 @@
-"""Optional Ollama LLM client with stub fallback."""
+"""Optional Ollama LLM client with stub fallback.
+
+Phase 6: Delegates core LLM calls to app.llm.ollama_client.
+This module retains the weave/verify convenience wrappers used by the chat pipeline.
+"""
 
 from __future__ import annotations
 
@@ -6,61 +10,26 @@ import logging
 import os
 from typing import Any
 
-import httpx
+from app.llm.ollama_client import (
+    LLMUnavailableError,
+    llm_available,
+    ollama_generate,
+    ping_ollama,
+    EG_OLLAMA_URL,
+    EG_OLLAMA_MODEL,
+)
 
 logger = logging.getLogger("echogarden.llm")
 
-EG_OLLAMA_URL: str = os.environ.get("EG_OLLAMA_URL", "")
-EG_OLLAMA_MODEL: str = os.environ.get("EG_OLLAMA_MODEL", "phi3:mini")
-_OLLAMA_TIMEOUT: float = 60.0  # seconds
-
-
-class LLMUnavailableError(Exception):
-    """Raised when the LLM backend is unreachable."""
-
-
-async def ping_ollama() -> bool:
-    """Return True if Ollama is reachable."""
-    if not EG_OLLAMA_URL:
-        return False
-    try:
-        async with httpx.AsyncClient(timeout=5.0) as client:
-            r = await client.get(f"{EG_OLLAMA_URL}/api/tags")
-            return r.status_code == 200
-    except Exception:
-        return False
-
-
-async def ollama_generate(prompt: str, *, timeout: float = _OLLAMA_TIMEOUT) -> str:
-    """Call Ollama /api/generate and return the response text.
-
-    Raises LLMUnavailableError if the server is unreachable.
-    """
-    if not EG_OLLAMA_URL:
-        raise LLMUnavailableError("EG_OLLAMA_URL not configured")
-
-    try:
-        async with httpx.AsyncClient(timeout=timeout) as client:
-            r = await client.post(
-                f"{EG_OLLAMA_URL}/api/generate",
-                json={
-                    "model": EG_OLLAMA_MODEL,
-                    "prompt": prompt,
-                    "stream": False,
-                },
-            )
-            r.raise_for_status()
-            data: dict[str, Any] = r.json()
-            return data.get("response", "")
-    except httpx.HTTPError as exc:
-        raise LLMUnavailableError(f"Ollama HTTP error: {exc}") from exc
-    except Exception as exc:
-        raise LLMUnavailableError(f"Ollama error: {exc}") from exc
-
-
-async def llm_available() -> bool:
-    """Check availability at module level (cached per-call)."""
-    return await ping_ollama()
+# Re-export for backward compatibility
+__all__ = [
+    "LLMUnavailableError",
+    "llm_available",
+    "ollama_generate",
+    "ping_ollama",
+    "weave_with_llm",
+    "verify_with_llm",
+]
 
 
 # ── Convenience wrappers used by the orchestrator ─────────

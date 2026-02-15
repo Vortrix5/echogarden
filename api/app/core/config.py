@@ -10,3 +10,7 @@ EG_MODELS_DIR: str = os.environ.get("EG_MODELS_DIR", "/data/models")
 EG_WHISPER_MODE: str = os.environ.get("EG_WHISPER_MODE", "local")
 EG_OPENCLIP_MODE: str = os.environ.get("EG_OPENCLIP_MODE", "local")
 EG_CAPTURE_API_KEY: str = os.environ.get("EG_CAPTURE_API_KEY", "")
+
+# Phase 6 — Local LLM (Ollama)
+EG_OLLAMA_URL: str = os.environ.get("EG_OLLAMA_URL", "http://host.docker.internal:11434")
+EG_OLLAMA_MODEL: str = os.environ.get("EG_OLLAMA_MODEL", "phi3:mini")

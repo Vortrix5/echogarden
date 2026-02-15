@@ -154,22 +154,44 @@ class Orchestrator:
             content_text = _read_text_content(path)
             steps_def[0].inputs["text"] = content_text
 
+        # Generate memory_id early so downstream tools (text_embed, graph_builder) can reference it
+        memory_id = _new_id()
+
         # Execute steps sequentially
         step_results: list[StepResult] = []
         prev_exec_node_id: str | None = None
         extracted_text = content_text  # flows through pipeline
+        summary = ""
+        entities: list[dict] = []
+        tags: list[str] = []
+        actions: list[dict] = []
 
         for step_def in steps_def:
             # Wire inputs from previous step outputs
             inputs = dict(step_def.inputs)
 
+            if step_def.tool_name == "summarizer":
+                inputs["content_text"] = extracted_text
+                inputs["title"] = os.path.basename(path)
+
+            if step_def.tool_name == "extractor":
+                inputs["content_text"] = extracted_text
+                inputs["title"] = os.path.basename(path)
+
             if step_def.tool_name == "text_embed" and extracted_text:
                 inputs["text"] = extracted_text
+                inputs["memory_id"] = memory_id
 
             if step_def.tool_name == "graph_builder":
-                inputs["content_text"] = extracted_text
-                if "memory_id" not in inputs:
-                    inputs["memory_id"] = ""
+                inputs["entities"] = entities
+                inputs["memory_id"] = memory_id
+                inputs["source"] = {
+                    "blob_id": blob_id,
+                    "source_id": source_id,
+                    "path": path,
+                    "mime": mime,
+                    "trace_id": trace_id,
+                }
 
             sr = await self._dispatch_tool(
                 trace_id=trace_id,
@@ -185,22 +207,38 @@ class Orchestrator:
             if step_def.tool_name in ("doc_parse", "ocr", "asr"):
                 extracted_text = sr.outputs.get("content_text") or sr.outputs.get("text", extracted_text)
 
+            if step_def.tool_name == "summarizer" and sr.status == "ok":
+                summary = sr.outputs.get("summary", "")
+
+            if step_def.tool_name == "extractor" and sr.status == "ok":
+                entities = sr.outputs.get("entities", [])
+                tags = sr.outputs.get("tags", [])
+                actions = sr.outputs.get("actions", [])
+
             if sr.status != "ok":
                 logger.warning(
                     "[ORCH]   trace=%s — step %s failed: %s",
                     trace_id[:12], step_def.tool_name, sr.error,
                 )
-                db_repo.finish_exec_trace(trace_id, "error")
-                return IngestResult(
-                    trace_id=trace_id,
-                    pipeline=pipeline.value,
-                    steps=step_results,
-                    status="error",
-                )
+                # Non-fatal for summarizer/extractor — continue pipeline
+                if step_def.tool_name not in ("summarizer", "extractor"):
+                    db_repo.finish_exec_trace(trace_id, "error")
+                    return IngestResult(
+                        trace_id=trace_id,
+                        pipeline=pipeline.value,
+                        steps=step_results,
+                        status="error",
+                    )
 
-        # Commit memory card
-        memory_id = _new_id()
-        summary = (extracted_text or "")[:500]
+        # Fallback summary if LLM failed
+        if not summary:
+            summary = (extracted_text or "")[:400]
+            # Try to cut at sentence boundary
+            for sep in (". ", ".\n"):
+                idx = summary.rfind(sep)
+                if idx > 30:
+                    summary = summary[:idx + 1].strip()
+                    break
 
         # Get text embedding vector_ref if available
         text_vector_ref = ""
@@ -208,7 +246,7 @@ class Orchestrator:
             if sr.tool_name == "text_embed" and sr.status == "ok":
                 text_vector_ref = sr.outputs.get("vector_ref", "")
 
-        metadata = {
+        metadata_json = {
             "blob_id": blob_id,
             "source_id": source_id,
             "file_path": path,
@@ -216,14 +254,19 @@ class Orchestrator:
             "size_bytes": size_bytes,
             "trace_id": trace_id,
             "pipeline": pipeline.value,
-            "content_text": (extracted_text or "")[:5000],
+            "source_type": "file_capture",
             "text_vector_ref": text_vector_ref or None,
+            "entities": entities,
+            "tags": tags,
+            "actions": actions,
+            "embedding_refs": {"text": text_vector_ref or None},
         }
         db_repo.insert_memory_card(
             memory_id=memory_id,
             card_type="file_capture",
             summary=summary,
-            metadata=metadata,
+            content_text=extracted_text or None,
+            metadata_json=metadata_json,
         )
 
         # Persist EMBEDDING row for text modality
@@ -231,12 +274,12 @@ class Orchestrator:
             db_repo.insert_embedding(memory_id, modality="text", vector_ref=text_vector_ref)
 
         logger.info(
-            "[ORCH]   trace=%s — memory_card=%s created",
-            trace_id[:12], memory_id[:12],
+            "[ORCH]   trace=%s — memory_card=%s created (summary=%d chars, entities=%d)",
+            trace_id[:12], memory_id[:12], len(summary), len(entities),
         )
 
         try:
-            self._upsert_graph(memory_id, summary, step_results)
+            self._upsert_graph(memory_id, summary, step_results, entities)
         except Exception:
             logger.exception("[ORCH]   trace=%s — graph upsert failed (non-fatal)", trace_id[:12])
 
@@ -262,6 +305,7 @@ class Orchestrator:
         size_bytes: int,
     ) -> IngestResult:
         from app.capture.config import EG_MAX_FILE_BYTES
+        from app.tools.ocr_quality import is_meaningful_ocr
 
         fname = os.path.basename(path)
         step_results: list[StepResult] = []
@@ -301,6 +345,8 @@ class Orchestrator:
             )
 
         # ── Parallel branch: OCR + VisionEmbed ────────────
+        # Generate memory_id early so text_embed / graph_builder get the real id
+        memory_id = _new_id()
         logger.info(
             "[ROUTE]  image detected → parallel branches: OCR + VisionEmbed for %s",
             fname,
@@ -321,7 +367,13 @@ class Orchestrator:
                 trace_id=trace_id,
                 tool_name="vision_embed",
                 intent="ingest.vision_embed",
-                inputs={"image_path": path, "blob_id": blob_id, "mime": mime},
+                inputs={
+                    "image_path": path,
+                    "blob_id": blob_id,
+                    "memory_id": memory_id,
+                    "mime": mime,
+                    "source_type": "file",
+                },
                 timeout_ms=300000,
                 prev_exec_node_id=None,  # root-level, no predecessor
             )
@@ -334,70 +386,237 @@ class Orchestrator:
         )
         step_results.extend([sr_ocr, sr_vision])
 
-        # Extract OCR text (may be empty on failure)
+        # ── Extract OCR output (structured) ───────────────
         ocr_text = ""
+        ocr_status = "failed"
+        ocr_error: str | None = None
+        ocr_avg_confidence: float | None = None
+
         if sr_ocr.status == "ok":
-            ocr_text = sr_ocr.outputs.get("content_text") or sr_ocr.outputs.get("text", "")
+            ocr_text = sr_ocr.outputs.get("text", "")
+            ocr_status = sr_ocr.outputs.get("status", "success")
+            ocr_error = sr_ocr.outputs.get("error")
+            ocr_avg_confidence = sr_ocr.outputs.get("avg_confidence")
+        else:
+            ocr_status = "failed"
+            ocr_error = sr_ocr.error or "OCR tool dispatch failed"
 
         vision_vector_ref = ""
         if sr_vision.status == "ok":
             vision_vector_ref = sr_vision.outputs.get("vector_ref", "")
 
-        logger.info(
-            "[ORCH]   trace=%s — OCR %s (%d chars), VisionEmbed %s (ref=%s)",
-            trace_id[:12],
-            sr_ocr.status, len(ocr_text),
-            sr_vision.status, vision_vector_ref[:20] if vision_vector_ref else "—",
+        # ── Decide base_text: OCR vs caption ──────────────
+        ocr_meaningful = is_meaningful_ocr(
+            ocr_text,
+            avg_confidence=ocr_avg_confidence,
         )
 
-        # ── Sequential: TextEmbed (only if OCR produced text) ──
+        base_text = ""
+        base_text_source = ""
+        caption_text = ""
+        caption_model = ""
+        sr_caption = None
+
+        if ocr_meaningful:
+            base_text = ocr_text
+            base_text_source = "ocr"
+            logger.info(
+                "[IMAGE]  ocr_status=%s ocr_len=%d -> using ocr",
+                ocr_status, len(ocr_text),
+            )
+        elif ocr_text and len(ocr_text.strip()) >= 20:
+            # OCR produced some text but failed the strict quality check.
+            # For diagrams / technical images this is still far more useful
+            # than a generic CLIP caption, so prefer it.
+            base_text = ocr_text
+            base_text_source = "ocr"
+            logger.info(
+                "[IMAGE]  ocr_status=%s ocr_len=%d quality=low -> still using ocr (better than caption for diagrams)",
+                ocr_status, len(ocr_text),
+            )
+        else:
+            # ── Caption fallback ──────────────────────────
+            logger.info(
+                "[IMAGE]  ocr_status=%s ocr_len=%d -> using caption",
+                ocr_status, len(ocr_text),
+            )
+            sr_caption = await self._dispatch_tool(
+                trace_id=trace_id,
+                tool_name="image_caption",
+                intent="ingest.caption",
+                inputs={"image_path": path},
+                timeout_ms=60000,
+                prev_exec_node_id=sr_ocr.exec_node_id,
+            )
+            step_results.append(sr_caption)
+
+            if sr_caption.status == "ok":
+                caption_text = sr_caption.outputs.get("caption", "")
+                caption_model = sr_caption.outputs.get("model", "")
+                if caption_text:
+                    base_text = caption_text
+                    base_text_source = "caption"
+            else:
+                logger.warning(
+                    "[ORCH]   trace=%s — caption also failed, using filename fallback",
+                    trace_id[:12],
+                )
+                base_text = f"Image: {fname}"
+                base_text_source = "filename"
+
+        logger.info(
+            "[ORCH]   trace=%s — OCR %s (%d chars), VisionEmbed %s (ref=%s), base_text_source=%s",
+            trace_id[:12],
+            ocr_status, len(ocr_text),
+            sr_vision.status, vision_vector_ref[:20] if vision_vector_ref else "—",
+            base_text_source,
+        )
+
+        # ── Sequential: Summarizer + Extractor + TextEmbed (if base_text) ──
         text_vector_ref = ""
-        if ocr_text.strip():
+        summary = ""
+        entities: list[dict] = []
+        tags: list[str] = []
+        actions: list[dict] = []
+
+        if base_text.strip():
+            # Decide which LLM agents to run based on text source:
+            #  - OCR text: run summarizer + extractor (full pipeline)
+            #  - BLIP caption: skip summarizer (caption IS the summary),
+            #    but run extractor to get entities/tags for the graph
+            #  - CLIP/heuristic caption: too short for LLM, extract from
+            #    CLIP subjects directly
+            is_ocr = base_text_source == "ocr"
+            is_blip = (base_text_source == "caption"
+                       and caption_model == "blip")
+
+            if is_ocr:
+                # ── Summarizer (only for OCR text) ──
+                sr_summarizer = await self._dispatch_tool(
+                    trace_id=trace_id,
+                    tool_name="summarizer",
+                    intent="ingest.summarize",
+                    inputs={"content_text": base_text, "title": fname},
+                    timeout_ms=180000,
+                    prev_exec_node_id=sr_ocr.exec_node_id,
+                )
+                step_results.append(sr_summarizer)
+                if sr_summarizer.status == "ok":
+                    summary = sr_summarizer.outputs.get("summary", "")
+
+            if is_ocr or is_blip:
+                # ── Extractor (OCR and BLIP captions) ──
+                sr_extractor = await self._dispatch_tool(
+                    trace_id=trace_id,
+                    tool_name="extractor",
+                    intent="ingest.extract",
+                    inputs={"content_text": base_text, "title": fname},
+                    timeout_ms=180000,
+                    prev_exec_node_id=sr_ocr.exec_node_id,
+                )
+                step_results.append(sr_extractor)
+                if sr_extractor.status == "ok":
+                    entities = sr_extractor.outputs.get("entities", [])
+                    tags = sr_extractor.outputs.get("tags", [])
+                    actions = sr_extractor.outputs.get("actions", [])
+
+                if is_blip:
+                    # BLIP caption IS the summary — no need for summarizer
+                    summary = base_text
+                    logger.info(
+                        "[ORCH]   trace=%s — BLIP caption used as summary, "
+                        "extractor extracted %d entities, %d tags",
+                        trace_id[:12], len(entities), len(tags),
+                    )
+            else:
+                # CLIP / heuristic caption: too short for LLM
+                summary = base_text
+
+                # Extract entities from CLIP subjects (no LLM needed)
+                if sr_caption and sr_caption.status == "ok":
+                    clip_subjects = sr_caption.outputs.get("subjects", [])
+                    for subj in clip_subjects:
+                        entities.append({
+                            "name": subj["name"],
+                            "type": "Topic",
+                            "confidence": subj.get("confidence", 0.0),
+                        })
+                    clip_tags = sr_caption.outputs.get("tags", [])
+                    if clip_tags:
+                        tags = clip_tags
+
+                logger.info(
+                    "[ORCH]   trace=%s — caption-sourced (model=%s), "
+                    "extracted %d entities from CLIP subjects, %d tags",
+                    trace_id[:12], caption_model, len(entities), len(tags),
+                )
+
+            # ── TextEmbed (always — embeds caption or OCR text) ──
             sr_text_embed = await self._dispatch_tool(
                 trace_id=trace_id,
                 tool_name="text_embed",
                 intent="ingest.embed",
-                inputs={"text": ocr_text},
+                inputs={"text": base_text, "memory_id": memory_id, "source_type": "file"},
                 timeout_ms=120000,
-                prev_exec_node_id=sr_ocr.exec_node_id,  # depends on OCR
+                prev_exec_node_id=sr_ocr.exec_node_id,
             )
             step_results.append(sr_text_embed)
             if sr_text_embed.status == "ok":
                 text_vector_ref = sr_text_embed.outputs.get("vector_ref", "")
         else:
             logger.info(
-                "[ORCH]   trace=%s — skipping text_embed (no OCR text)",
+                "[ORCH]   trace=%s — skipping summarizer/extractor/text_embed (no base_text)",
                 trace_id[:12],
             )
 
-        # ── Sequential: GraphBuilder (only if OCR produced text) ──
-        if ocr_text.strip():
-            prev_node = step_results[-1].exec_node_id  # text_embed or ocr
+        # ── Sequential: GraphBuilder (only if entities extracted) ──
+        if entities:
+            prev_node = step_results[-1].exec_node_id
             sr_graph = await self._dispatch_tool(
                 trace_id=trace_id,
                 tool_name="graph_builder",
                 intent="ingest.graph",
-                inputs={"content_text": ocr_text, "memory_id": ""},
+                inputs={
+                    "entities": entities,
+                    "memory_id": memory_id,
+                    "source": {
+                        "blob_id": blob_id,
+                        "source_id": source_id,
+                        "path": path,
+                        "mime": mime,
+                        "trace_id": trace_id,
+                    },
+                },
                 timeout_ms=10000,
                 prev_exec_node_id=prev_node,
             )
             step_results.append(sr_graph)
         else:
             logger.info(
-                "[ORCH]   trace=%s — skipping graph_builder (no OCR text)",
+                "[ORCH]   trace=%s — skipping graph_builder (no entities)",
                 trace_id[:12],
             )
 
-        # ── Commit memory card (always, even on partial failure) ──
-        memory_id = _new_id()
-        summary = (ocr_text or f"Image: {fname}")[:500]
+        # Fallback summary — never store OCR errors as summary
+        if not summary:
+            if base_text and base_text.strip():
+                summary = base_text[:400]
+                # Try to cut at sentence boundary
+                for sep in (". ", ".\n"):
+                    idx = summary.rfind(sep)
+                    if idx > 30:
+                        summary = summary[:idx + 1].strip()
+                        break
+            else:
+                summary = f"Image: {fname}"
+
         card_type = "file_capture"
 
         # Determine overall status
         any_ok = sr_ocr.status == "ok" or sr_vision.status == "ok"
         overall_status = "ok" if any_ok else "error"
 
-        metadata = {
+        metadata_json = {
             "blob_id": blob_id,
             "source_id": source_id,
             "file_path": path,
@@ -405,21 +624,41 @@ class Orchestrator:
             "size_bytes": size_bytes,
             "trace_id": trace_id,
             "pipeline": "ocr",
-            "content_text": ocr_text[:5000] if ocr_text else None,
-            "ocr_status": sr_ocr.status,
-            "vision_vector_ref": vision_vector_ref or None,
+            "source_type": "file_capture",
+            "base_text_source": base_text_source,
+            "ocr_status": ocr_status,
+            "ocr_error": ocr_error,
+            "ocr_text_len": len(ocr_text),
+            "ocr_avg_confidence": ocr_avg_confidence,
+            "caption_text": caption_text or None,
+            "caption_model": caption_model or None,
             "vision_status": sr_vision.status,
-            "text_vector_ref": text_vector_ref or None,
+            "entities": entities,
+            "tags": tags,
+            "actions": actions,
+            "embedding_refs": {
+                "text": text_vector_ref or None,
+                "vision": vision_vector_ref or None,
+            },
         }
+
+        # content_text = base_text (OCR or caption), never OCR error messages
         db_repo.insert_memory_card(
             memory_id=memory_id,
             card_type=card_type,
             summary=summary,
-            metadata=metadata,
+            content_text=base_text if base_text.strip() else None,
+            metadata_json=metadata_json,
         )
         logger.info(
-            "[ORCH]   trace=%s — memory_card=%s created (ocr=%s, vision=%s)",
-            trace_id[:12], memory_id[:12], sr_ocr.status, sr_vision.status,
+            "[ORCH]   trace=%s — memory_card=%s created "
+            "(base_text_source=%s, ocr=%s, vision=%s, entities=%d, "
+            "embedding_refs: text=%s vision=%s)",
+            trace_id[:12], memory_id[:12],
+            base_text_source, ocr_status, sr_vision.status,
+            len(entities),
+            "present" if text_vector_ref else "none",
+            "present" if vision_vector_ref else "none",
         )
 
         # Persist EMBEDDING rows for each modality
@@ -430,7 +669,7 @@ class Orchestrator:
 
         # Best-effort graph upsert
         try:
-            self._upsert_graph(memory_id, summary, step_results)
+            self._upsert_graph(memory_id, summary, step_results, entities)
         except Exception:
             logger.exception("[ORCH]   trace=%s — graph upsert failed (non-fatal)", trace_id[:12])
 
@@ -636,7 +875,13 @@ class Orchestrator:
             return "fail", "Binary content detected"
         return "pass", ""
 
-    def _upsert_graph(self, memory_id: str, summary: str, step_results: list[StepResult]) -> None:
+    def _upsert_graph(
+        self,
+        memory_id: str,
+        summary: str,
+        step_results: list[StepResult],
+        entities: list[dict] | None = None,
+    ) -> None:
         """Best-effort graph upsert from graph_builder output."""
         try:
             from app.graph.models import GraphEdgeIn, GraphNodeIn
@@ -660,13 +905,21 @@ class Orchestrator:
                     for n in sr.outputs.get("nodes", []):
                         entity_nodes.append(GraphNodeIn(**n))
                     for e in sr.outputs.get("edges", []):
-                        # Fix memory_id in edges if it was placeholder
-                        if e.get("from_node_id", "").startswith("mem:"):
-                            e["from_node_id"] = f"mem:{memory_id}"
-                        prov = e.get("provenance", {})
+                        edge_data = dict(e)
+                        # Replace placeholder or any mem: prefix with real memory_id
+                        fid = edge_data.get("from_node_id", "")
+                        if fid.startswith("mem:"):
+                            edge_data["from_node_id"] = f"mem:{memory_id}"
+                        # Recalculate edge_id with real memory_id
+                        import hashlib as _hl
+                        edge_data["edge_id"] = _hl.sha1(
+                            f"{edge_data['from_node_id']}|{edge_data.get('edge_type','')}|{edge_data.get('to_node_id','')}".encode()
+                        ).hexdigest()[:32]
+                        prov = edge_data.get("provenance", {})
                         if not prov.get("tool_call_id"):
                             prov["tool_call_id"] = sr.call_id
-                        graph_edges.append(GraphEdgeIn(**{**e, "provenance": prov}))
+                        edge_data["provenance"] = prov
+                        graph_edges.append(GraphEdgeIn(**edge_data))
 
             graph.upsert_nodes([mem_node] + entity_nodes)
             if graph_edges:
