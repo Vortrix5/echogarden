@@ -92,21 +92,46 @@ async def weave_with_llm(question: str, evidence: list[dict]) -> dict:
 
 
 def _stub_weave(question: str, evidence: list[dict]) -> dict:
-    """Deterministic stub when no LLM."""
+    """Deterministic stub when no LLM.  Produces a concise, natural answer."""
     if not evidence:
         return {
-            "answer": "I could not find any relevant memories to answer this question.",
+            "answer": "I couldn't find anything relevant in your knowledge base for this question.",
             "citations": [],
             "llm_used": False,
         }
-    bullets = []
+    import os as _os
+    import re as _re
+
     citations = []
-    for ev in evidence[:8]:
+    fragments: list[str] = []
+    for ev in evidence[:3]:
         mid = ev.get("memory_id", "?")
-        summary = ev.get("summary", "(no summary)")
-        bullets.append(f"- [{mid}] {summary}")
+        summary = (ev.get("summary") or "").strip()
+        if not summary:
+            continue
+        # Skip garbled / unusable summaries
+        lower = summary.lower()
+        if any(phrase in lower for phrase in (
+            "cannot be summarized", "garbled", "encoded data",
+            "does not form coherent", "lacks meaningful content",
+            "it cannot be summarized",
+        )):
+            continue
+        # Derive a human label
+        file_path = ev.get("file_path") or ""
+        if not file_path:
+            meta = ev.get("metadata") or {}
+            if isinstance(meta, dict):
+                file_path = meta.get("file_path", "")
+        label = _os.path.basename(file_path) if file_path else (summary[:40])
+
+        # Normalize whitespace (newlines, multi-spaces) to single space
+        clean = _re.sub(r'\s+', ' ', summary).strip()
+
+        fragments.append(f"[{label}] {clean}")
         citations.append({"memory_id": mid, "quote": summary[:120]})
-    answer = "Here are the most relevant memories I found:\n" + "\n".join(bullets)
+
+    answer = " ".join(fragments)
     return {"answer": answer, "citations": citations, "llm_used": False}
 
 

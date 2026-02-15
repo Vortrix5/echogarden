@@ -902,7 +902,19 @@ class Orchestrator:
             logger.debug("Failed to fetch memory cards for evidence", exc_info=True)
 
         evidence: list[dict] = []
+        # Determine best score for relative filtering
+        best_score = max(
+            (r.get("final_score", r.get("score", 0.0)) for r in raw_results[:top_k]),
+            default=0.0,
+        )
+        # Evidence must be at least 75% of the best score and above 0.18 absolute
+        score_floor = max(0.18, best_score * 0.75)
+
         for r in raw_results[:top_k]:
+            # Skip low-relevance noise
+            score = r.get("final_score", r.get("score", 0.0))
+            if score < score_floor:
+                continue
             mid = r.get("memory_id", "")
             card = cards_by_id.get(mid, {})
 
@@ -928,6 +940,7 @@ class Orchestrator:
                 "content_text": snippet,
                 "source_type": meta.get("source_type", card.get("type", "")),
                 "created_at": card.get("created_at", ""),
+                "file_path": meta.get("file_path", ""),
                 "score": r.get("final_score", r.get("score", 0.0)),
                 "reasons": r.get("reasons") if isinstance(r.get("reasons"), list)
                            else ([r.get("reason")] if r.get("reason") else []),
