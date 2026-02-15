@@ -24,6 +24,8 @@ import app.agents.retrieval  # noqa: F401
 import app.agents.graph_builder  # noqa: F401
 import app.agents.weaver  # noqa: F401
 import app.agents.verifier  # noqa: F401
+import app.agents.summarizer  # noqa: F401  (Phase 6)
+import app.agents.extractor  # noqa: F401  (Phase 6)
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(name)s %(levelname)s %(message)s")
 
