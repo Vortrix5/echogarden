@@ -9,7 +9,6 @@ import uuid
 from pathlib import Path
 
 from app.core.config import (
-    EG_MAX_FILE_BYTES,
     EG_POLL_INTERVAL,
     EG_WATCH_ROOTS,
 )

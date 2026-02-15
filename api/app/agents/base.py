@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import asyncio
 import json
-import time
 import uuid
 from abc import ABC, abstractmethod
 
@@ -111,7 +110,7 @@ class BasePassiveAgent(ABC):
 
 def _elapsed(started: str, finished: str) -> int:
     """Compute elapsed milliseconds from ISO timestamps."""
-    from datetime import datetime, timezone
+    from datetime import datetime
 
     t0 = datetime.fromisoformat(started)
     t1 = datetime.fromisoformat(finished)

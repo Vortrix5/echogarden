@@ -120,15 +120,6 @@ def search(
         return []
 
 
-def collection_exists(name: str) -> bool:
-    """Check if a collection exists."""
-    try:
-        r = httpx.get(_url(f"/collections/{name}"), timeout=_TIMEOUT)
-        return r.status_code == 200
-    except Exception:
-        return False
-
-
 # ── Phase 5: text-vector search for hybrid retrieval ─────
 
 def search_text_vectors(

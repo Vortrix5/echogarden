@@ -146,23 +146,3 @@ def _embed_text_sync(text: str, memory_id: str, source_type: str, created_at: st
         return {"vector_ref": "", "error": str(exc)}
 
 
-async def search_text(query: str, limit: int = 10) -> list[dict]:
-    """Search for similar text embeddings in Qdrant."""
-    import asyncio
-    return await asyncio.to_thread(_search_text_sync, query, limit)
-
-
-def _search_text_sync(query: str, limit: int) -> list[dict]:
-    """Synchronous text search."""
-    model = _load_model()
-    if model is None:
-        return []
-
-    try:
-        vector = model.encode(query, normalize_embeddings=True).tolist()
-        _ensure_qdrant_collection()
-        from app.tools.qdrant_client import search
-        return search(_COLLECTION_NAME, vector, limit=limit)
-    except Exception:
-        logger.exception("Text search failed")
-        return []

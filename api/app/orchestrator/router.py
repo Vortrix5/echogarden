@@ -143,29 +143,3 @@ def build_ingest_steps(
             depends_on=["extractor"],
         ),
     ]
-
-
-def build_chat_steps() -> list[ToolStep]:
-    """Return the ordered tool steps for a chat pipeline."""
-    return [
-        ToolStep(
-            tool_name="retrieval",
-            intent="chat.retrieve",
-            inputs={},
-            timeout_ms=10000,
-        ),
-        ToolStep(
-            tool_name="weaver",
-            intent="chat.weave",
-            inputs={},
-            timeout_ms=30000,
-            depends_on=["retrieval"],
-        ),
-        ToolStep(
-            tool_name="verifier",
-            intent="chat.verify",
-            inputs={},
-            timeout_ms=15000,
-            depends_on=["weaver"],
-        ),
-    ]

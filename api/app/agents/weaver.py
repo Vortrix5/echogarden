@@ -9,21 +9,12 @@ from __future__ import annotations
 import json
 import logging
 import re
-from typing import Any
 
 from app.agents.base import BasePassiveAgent
 from app.core.tool_contracts import ToolEnvelope
 from app.core.tool_registry import registry
 
 logger = logging.getLogger("echogarden.agents.weaver")
-
-
-def _build_snippet(ev: dict, max_chars: int = 800) -> str:
-    """Return the best available text excerpt from an evidence dict."""
-    content = ev.get("content_text") or ""
-    summary = ev.get("summary") or ""
-    text = content if content else summary
-    return text[:max_chars]
 
 
 def _stub_weave(question: str, evidence: list[dict]) -> dict:
@@ -84,7 +75,7 @@ class WeaverAgent(BasePassiveAgent):
 
         # Otherwise, try LLM then fall back to stub
         try:
-            from app.llm.ollama_client import ollama_generate_json, LLMUnavailableError
+            from app.llm.ollama_client import ollama_generate_json
             from app.llm.prompts import weaver_system, weaver_prompt, format_evidence_block
 
             evidence_block = format_evidence_block(evidence, max_chars=400)

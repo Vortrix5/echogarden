@@ -23,13 +23,6 @@ class ToolStep(BaseModel):
     depends_on: list[str] = Field(default_factory=list)
 
 
-class OrchestrationPlan(BaseModel):
-    """Describes the full pipeline the orchestrator will execute."""
-    trace_id: str
-    pipeline: PipelineType
-    steps: list[ToolStep]
-
-
 class StepResult(BaseModel):
     """Result of a single orchestrated tool step."""
     tool_name: str

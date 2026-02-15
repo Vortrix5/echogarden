@@ -8,7 +8,6 @@ from typing import Any
 from fastapi import APIRouter
 from fastapi.responses import HTMLResponse
 
-from app.db import repo as db_repo
 from app.db.conn import get_conn
 
 router = APIRouter(tags=["debug"])

@@ -10,7 +10,6 @@ Examples:
 from __future__ import annotations
 
 import re
-import unicodedata
 
 # ── Controlled entity type enum ──────────────────────────
 

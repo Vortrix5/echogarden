@@ -19,7 +19,7 @@ import os
 from datetime import datetime, timezone
 from typing import Any
 
-from app.retrieval.graph_expand import GraphCandidate, expand_from_seeds
+from app.retrieval.graph_expand import expand_from_seeds
 from app.retrieval.models import (
     GraphPath,
     RetrievedCard,

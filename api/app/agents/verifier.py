@@ -9,7 +9,6 @@ from __future__ import annotations
 import json
 import logging
 import re
-from typing import Any
 
 from app.agents.base import BasePassiveAgent
 from app.core.tool_contracts import ToolEnvelope
@@ -78,7 +77,7 @@ class VerifierAgent(BasePassiveAgent):
 
         # Try LLM-based verification
         try:
-            from app.llm.ollama_client import ollama_generate_json, LLMUnavailableError
+            from app.llm.ollama_client import ollama_generate_json
             from app.llm.prompts import verifier_system, verifier_prompt, format_evidence_block
 
             evidence_block = format_evidence_block(evidence, max_chars=400)

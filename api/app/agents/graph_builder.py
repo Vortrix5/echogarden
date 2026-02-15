@@ -52,7 +52,6 @@ class GraphBuilderAgent(BasePassiveAgent):
     async def execute(self, envelope: ToolEnvelope) -> dict:
         memory_id: str = envelope.inputs.get("memory_id", "")
         entities: list[dict] = envelope.inputs.get("entities", [])
-        source: dict = envelope.inputs.get("source", {})
         call_id: str = envelope.inputs.get("_call_id", "")
         trace_id: str = envelope.trace_id
 

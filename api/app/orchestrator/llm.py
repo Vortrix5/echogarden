@@ -8,18 +8,11 @@ from __future__ import annotations
 
 import json
 import logging
-import os
 import re
-from typing import Any
 
 from app.llm.ollama_client import (
     LLMUnavailableError,
-    llm_available,
-    ollama_generate,
     ollama_generate_json,
-    ping_ollama,
-    EG_OLLAMA_URL,
-    EG_OLLAMA_MODEL,
 )
 from app.llm.prompts import (
     format_evidence_block,
@@ -30,16 +23,6 @@ from app.llm.prompts import (
 )
 
 logger = logging.getLogger("echogarden.llm")
-
-# Re-export for backward compatibility
-__all__ = [
-    "LLMUnavailableError",
-    "llm_available",
-    "ollama_generate",
-    "ping_ollama",
-    "weave_with_llm",
-    "verify_with_llm",
-]
 
 
 def _parse_json(raw: str) -> dict | None:

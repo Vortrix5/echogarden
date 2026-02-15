@@ -14,14 +14,11 @@ import os
 import uuid
 from typing import Any
 
-from app.core.tool_contracts import ToolEnvelope, ToolResult, ToolStatus
+from app.core.tool_contracts import ToolEnvelope, ToolResult
 from app.core.tool_registry import registry
 from app.db import repo as db_repo
-from app.orchestrator.llm import (
-    llm_available,
-    verify_with_llm,
-    weave_with_llm,
-)
+from app.llm.ollama_client import llm_available
+from app.orchestrator.llm import verify_with_llm, weave_with_llm
 from app.orchestrator.models import (
     ChatResult,
     IngestResult,
@@ -29,7 +26,6 @@ from app.orchestrator.models import (
     StepResult,
 )
 from app.orchestrator.router import (
-    build_chat_steps,
     build_ingest_steps,
     choose_pipeline,
     is_image_pipeline,

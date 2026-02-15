@@ -7,7 +7,7 @@ import json
 import os
 
 from fastapi import APIRouter, HTTPException, Query
-from fastapi.responses import FileResponse, RedirectResponse, Response
+from fastapi.responses import FileResponse, RedirectResponse
 
 from app.core.config import EG_THUMB_DIR
 from app.db.conn import get_conn

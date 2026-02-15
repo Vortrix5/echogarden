@@ -44,42 +44,6 @@ def get_memory_card_table() -> str:
         conn.close()
 
 
-def ensure_memory_card_columns() -> None:
-    """Introspect the memory_card table and add any missing Phase 6 columns.
-    
-    Required columns:
-      memory_id (TEXT PK) | type | created_at | source_time | summary
-      content_text | metadata_json
-    """
-    conn = get_conn()
-    try:
-        table = get_memory_card_table()
-        existing = _table_columns(conn, table)
-        if not existing:
-            logger.warning("Memory card table '%s' not found; migration will create it", table)
-            return
-
-        needed = {
-            "content_text": "TEXT",
-            "metadata_json": "TEXT",
-            "source_time": "TEXT",
-            "type": "TEXT",
-            "created_at": "TEXT",
-            "summary": "TEXT",
-        }
-        for col, col_type in needed.items():
-            if col not in existing:
-                try:
-                    conn.execute(f"ALTER TABLE [{table}] ADD COLUMN {col} {col_type}")
-                    logger.info("Added column %s.%s (%s)", table, col, col_type)
-                except Exception as exc:
-                    logger.debug("Column %s.%s skipped: %s", table, col, exc)
-
-        conn.commit()
-    finally:
-        conn.close()
-
-
 def _now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
 
@@ -163,24 +127,6 @@ def insert_exec_edge(
             """INSERT INTO exec_edge (exec_edge_id, from_exec_node_id, to_exec_node_id, condition)
                VALUES (?, ?, ?, ?)""",
             (uuid.uuid4().hex, from_exec_node_id, to_exec_node_id, condition),
-        )
-        conn.commit()
-    finally:
-        conn.close()
-
-
-# ── conversation_turn ─────────────────────────────────────
-def insert_conversation_turn(
-    turn_id: str,
-    user_text: str,
-    assistant_text: str,
-) -> None:
-    conn = get_conn()
-    try:
-        conn.execute(
-            """INSERT INTO conversation_turn (turn_id, ts, user_text, assistant_text)
-               VALUES (?, ?, ?, ?)""",
-            (turn_id, _now_iso(), user_text, assistant_text),
         )
         conn.commit()
     finally:
@@ -287,18 +233,6 @@ def insert_embedding(
         )
         conn.commit()
         return embedding_id
-    finally:
-        conn.close()
-
-
-def get_embeddings_for_memory(memory_id: str) -> list[dict[str, Any]]:
-    """Return all EMBEDDING rows for a memory card."""
-    conn = get_conn()
-    try:
-        rows = conn.execute(
-            "SELECT * FROM embedding WHERE memory_id = ?", (memory_id,)
-        ).fetchall()
-        return [dict(r) for r in rows]
     finally:
         conn.close()
 
@@ -627,7 +561,7 @@ def find_memory_card_by_blob(blob_id: str) -> str | None:
         conn.close()
 
 
-# ── conversation_turn extension ───────────────────────────
+# ── conversation_turn ─────────────────────────────────────
 def insert_conversation_turn(
     turn_id: str,
     user_text: str,
