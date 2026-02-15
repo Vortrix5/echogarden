@@ -19,6 +19,11 @@ class RetrievalAgent(BasePassiveAgent):
     version = "0.1.0"
 
     async def execute(self, envelope: ToolEnvelope) -> dict:
+        # If orchestrator provides pre-computed results, return them directly
+        llm_override = envelope.inputs.get("_llm_override")
+        if llm_override and isinstance(llm_override, dict):
+            return llm_override
+
         query = envelope.inputs.get("query", "")
         limit = envelope.inputs.get("limit", 10)
         hops = envelope.inputs.get("hops", 1)
