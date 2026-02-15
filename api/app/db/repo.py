@@ -3,11 +3,81 @@
 from __future__ import annotations
 
 import json
+import logging
 import uuid
 from datetime import datetime, timezone
 from typing import Any
 
 from app.db.conn import get_conn
+
+logger = logging.getLogger("echogarden.db.repo")
+
+# ── schema introspection ──────────────────────────────────
+
+def _table_columns(conn, table: str) -> list[str]:
+    """Return column names for a table."""
+    try:
+        rows = conn.execute(f"PRAGMA table_info([{table}])").fetchall()
+        return [r[1] for r in rows]
+    except Exception:
+        return []
+
+
+def _table_exists(conn, table: str) -> bool:
+    row = conn.execute(
+        "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name=?",
+        (table,),
+    ).fetchone()
+    return row[0] > 0
+
+
+def get_memory_card_table() -> str:
+    """Detect the actual memory card table name.
+    Prefer MEMORY_CARD if it exists, otherwise memory_card.
+    """
+    conn = get_conn()
+    try:
+        if _table_exists(conn, "MEMORY_CARD"):
+            return "MEMORY_CARD"
+        return "memory_card"
+    finally:
+        conn.close()
+
+
+def ensure_memory_card_columns() -> None:
+    """Introspect the memory_card table and add any missing Phase 6 columns.
+    
+    Required columns:
+      memory_id (TEXT PK) | type | created_at | source_time | summary
+      content_text | metadata_json
+    """
+    conn = get_conn()
+    try:
+        table = get_memory_card_table()
+        existing = _table_columns(conn, table)
+        if not existing:
+            logger.warning("Memory card table '%s' not found; migration will create it", table)
+            return
+
+        needed = {
+            "content_text": "TEXT",
+            "metadata_json": "TEXT",
+            "source_time": "TEXT",
+            "type": "TEXT",
+            "created_at": "TEXT",
+            "summary": "TEXT",
+        }
+        for col, col_type in needed.items():
+            if col not in existing:
+                try:
+                    conn.execute(f"ALTER TABLE [{table}] ADD COLUMN {col} {col_type}")
+                    logger.info("Added column %s.%s (%s)", table, col, col_type)
+                except Exception as exc:
+                    logger.debug("Column %s.%s skipped: %s", table, col, exc)
+
+        conn.commit()
+    finally:
+        conn.close()
 
 
 def _now_iso() -> str:
@@ -117,26 +187,84 @@ def insert_conversation_turn(
         conn.close()
 
 
+# ── content caps ──────────────────────────────────────────
+_MAX_SUMMARY_CHARS = 400
+_MAX_CONTENT_TEXT_CHARS = 200_000
+
 # ── memory_card ───────────────────────────────────────────
 def insert_memory_card(
     memory_id: str,
     card_type: str,
     summary: str,
     metadata: dict[str, Any] | None = None,
+    content_text: str | None = None,
+    metadata_json: dict[str, Any] | None = None,
 ) -> None:
+    """Insert a memory card. Phase 6: stores content_text and metadata_json.
+
+    Enforces:
+      - summary max 400 chars (hard truncate)
+      - content_text max 200k chars (hard truncate)
+      - summary != content_text
+    Legacy callers that only pass metadata still work (backwards compatible).
+    """
+    # Enforce summary cap
+    if summary and len(summary) > _MAX_SUMMARY_CHARS:
+        summary = summary[:_MAX_SUMMARY_CHARS - 3].rstrip() + "..."
+
+    # Enforce content_text cap
+    if content_text and len(content_text) > _MAX_CONTENT_TEXT_CHARS:
+        content_text = content_text[:_MAX_CONTENT_TEXT_CHARS]
+
+    # Prevent summary == content_text
+    if summary and content_text and summary == content_text[:len(summary)]:
+        cut = content_text[:_MAX_SUMMARY_CHARS]
+        for sep in (". ", ".\n"):
+            idx = cut.rfind(sep)
+            if idx > 30:
+                summary = cut[:idx + 1].strip()
+                break
+
+    # Merge legacy metadata into metadata_json if metadata_json not provided
+    if metadata_json is None and metadata is not None:
+        metadata_json = metadata
+
+    meta_str = json.dumps(metadata_json) if metadata_json else (json.dumps(metadata) if metadata else None)
+
     conn = get_conn()
     try:
-        conn.execute(
-            """INSERT INTO memory_card (memory_id, type, summary, metadata)
-               VALUES (?, ?, ?, ?)""",
-            (memory_id, card_type, summary, json.dumps(metadata) if metadata else None),
-        )
-        # Sync FTS index
-        conn.execute(
-            """INSERT INTO memory_card_fts (rowid, summary)
-               SELECT rowid, summary FROM memory_card WHERE memory_id = ?""",
-            (memory_id,),
-        )
+        table = get_memory_card_table()
+        cols = _table_columns(conn, table)
+
+        # Build dynamic INSERT based on available columns
+        col_names = ["memory_id", "type", "summary"]
+        values: list = [memory_id, card_type, summary]
+
+        if "content_text" in cols and content_text is not None:
+            col_names.append("content_text")
+            values.append(content_text)
+
+        if "metadata_json" in cols and meta_str is not None:
+            col_names.append("metadata_json")
+            values.append(meta_str)
+        elif "metadata" in cols and meta_str is not None:
+            col_names.append("metadata")
+            values.append(meta_str)
+
+        placeholders = ", ".join("?" for _ in col_names)
+        sql = f"INSERT INTO [{table}] ({', '.join(col_names)}) VALUES ({placeholders})"
+        conn.execute(sql, values)
+
+        # Sync FTS index (best-effort)
+        try:
+            conn.execute(
+                f"""INSERT INTO memory_card_fts (rowid, summary)
+                   SELECT rowid, summary FROM [{table}] WHERE memory_id = ?""",
+                (memory_id,),
+            )
+        except Exception:
+            pass  # FTS table may not exist
+
         conn.commit()
     finally:
         conn.close()
@@ -359,22 +487,25 @@ def find_memory_card_by_blob(blob_id: str) -> str | None:
     """Return existing memory_id if a card already exists for this blob_id."""
     conn = get_conn()
     try:
-        row = conn.execute(
-            """SELECT memory_id FROM memory_card
-               WHERE metadata LIKE ?
-               LIMIT 1""",
-            (f'%"blob_id": "{blob_id}"%',),
-        ).fetchone()
-        if row:
-            return row["memory_id"]
-        # Also try compact JSON format
-        row = conn.execute(
-            """SELECT memory_id FROM memory_card
-               WHERE metadata LIKE ?
-               LIMIT 1""",
-            (f'%"blob_id":"{blob_id}"%',),
-        ).fetchone()
-        return row["memory_id"] if row else None
+        cols = _table_columns(conn, "memory_card")
+        # Search both metadata and metadata_json columns
+        search_cols = []
+        if "metadata_json" in cols:
+            search_cols.append("metadata_json")
+        if "metadata" in cols:
+            search_cols.append("metadata")
+        if not search_cols:
+            return None
+
+        for col in search_cols:
+            for pattern in (f'%"blob_id": "{blob_id}"%', f'%"blob_id":"{blob_id}"%'):
+                row = conn.execute(
+                    f"SELECT memory_id FROM memory_card WHERE {col} LIKE ? LIMIT 1",
+                    (pattern,),
+                ).fetchone()
+                if row:
+                    return row["memory_id"]
+        return None
     except Exception:
         return None
     finally:
