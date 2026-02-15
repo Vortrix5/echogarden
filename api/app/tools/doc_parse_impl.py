@@ -35,6 +35,10 @@ async def parse_document(path: str, blob_id: str = "") -> dict:
         if file_size == 0:
             return {"content_text": "", "mime": "text/plain"}
 
+        # Sanitise filename for HTTP headers — replace non-ASCII characters
+        # to avoid UnicodeEncodeError in httpx (headers must be ASCII).
+        safe_name = os.path.basename(path).encode("ascii", errors="replace").decode("ascii")
+
         async with httpx.AsyncClient(timeout=_TIMEOUT) as client:
             with open(path, "rb") as f:
                 content = f.read()
@@ -45,7 +49,7 @@ async def parse_document(path: str, blob_id: str = "") -> dict:
                 content=content,
                 headers={
                     "Accept": "text/plain",
-                    "Content-Disposition": f'attachment; filename="{os.path.basename(path)}"',
+                    "Content-Disposition": f'attachment; filename="{safe_name}"',
                 },
             )
             r.raise_for_status()
@@ -56,7 +60,7 @@ async def parse_document(path: str, blob_id: str = "") -> dict:
                 mime_r = await client.put(
                     f"{TIKA_URL}/detect/stream",
                     content=content,
-                    headers={"Content-Disposition": f'attachment; filename="{os.path.basename(path)}"'},
+                    headers={"Content-Disposition": f'attachment; filename="{safe_name}"'},
                 )
                 detected_mime = mime_r.text.strip() if mime_r.status_code == 200 else "application/octet-stream"
             except Exception:
