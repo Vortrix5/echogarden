@@ -26,6 +26,7 @@ import app.agents.weaver  # noqa: F401
 import app.agents.verifier  # noqa: F401
 import app.agents.summarizer  # noqa: F401  (Phase 6)
 import app.agents.extractor  # noqa: F401  (Phase 6)
+import app.agents.image_caption  # noqa: F401  (Phase 7: caption fallback)
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(name)s %(levelname)s %(message)s")
 
